@@ -10,4 +10,15 @@ export default defineConfig({
       },
     }),
   ],
+
+  // ✅ PROXY DEV (très important)
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
 })
