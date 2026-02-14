@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: identity-service
+  template:
+    metadata:
+      labels:
+        app: identity-service
+    spec:
+      containers:
+      - name: identity-service
+        image: identity-service:latest
+        imagePullPolicy: Never
+        ports:
+          - containerPort: 8080  # correspond au port exposé dans Dockerfile
+        env:
+          - name: SPRING_DATASOURCE_URL
+            value: jdbc:postgresql://postgres:5432/observability
+          - name: SPRING_DATASOURCE_USERNAME
+            value: postgres
+          - name: SPRING_DATASOURCE_PASSWORD
+            value: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-service
+spec:
+  type: ClusterIP
+  selector:
+    app: identity-service
+  ports:
+    - port: 8080          # correspond au port exposé dans le conteneur
+      targetPort: 8080
+

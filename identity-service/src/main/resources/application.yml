@@ -1,0 +1,18 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/observability
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+jwt:
+  secret: "c8f3a2b1d4e5f6g7h8i9j0klmnopqrstuvwx1234567890ABCDEFGH!@#$%^&*()"
+  access-token:
+    expiration: 900000  # 15 min
