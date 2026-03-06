@@ -1,7 +1,12 @@
+// src/pages/Login.jsx
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { login } from "../services/authApi";
 
-function Login({ goBack, onSuccess }) {
+import { Container, Box, TextField, Button, Typography, Paper } from "@mui/material";
+
+export default function Login() {
+  const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -9,29 +14,52 @@ function Login({ goBack, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const data = await login(form);
-      alert("Connexion réussie !");
-      if (onSuccess) onSuccess(data);
+      await login(form);
+      // redirection après succès
+      navigate("/dashboard");
     } catch (err) {
-      console.error(err);
-      alert("Erreur lors de la connexion : " + (err.response?.data?.message || err.message));
+      alert("Erreur : " + (err.response?.data?.message || err.message));
     }
   };
 
   return (
-    <div style={{ height:"100vh", display:"flex", flexDirection:"column", justifyContent:"center", alignItems:"center", backgroundColor: "#111827", color:"#fff" }}>
-      <h2 style={{ marginBottom: "20px" }}>Connexion</h2>
-      <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", width:"300px" }}>
-        <input name="email" type="email" placeholder="Email" value={form.email} onChange={handleChange} style={inputStyle} required />
-        <input name="password" type="password" placeholder="Mot de passe" value={form.password} onChange={handleChange} style={inputStyle} required />
-        <button type="submit" style={buttonStyle}>Se connecter</button>
-      </form>
-      <button onClick={goBack} style={{ marginTop:"20px", background:"none", color:"#fff", border:"none", cursor:"pointer" }}>Retour</button>
-    </div>
+    <Container maxWidth="sm">
+      <Box sx={{ height: "100vh", display: "flex", alignItems: "center" }}>
+        <Paper sx={{ p: 4, width: "100%" }} elevation={3}>
+          <Typography variant="h4" align="center" gutterBottom>
+            Login
+          </Typography>
+
+          <form onSubmit={handleSubmit}>
+            <TextField
+              fullWidth
+              label="Email"
+              name="email"
+              type="email"
+              margin="normal"
+              value={form.email}
+              onChange={handleChange}
+            />
+            <TextField
+              fullWidth
+              label="Password"
+              name="password"
+              type="password"
+              margin="normal"
+              value={form.password}
+              onChange={handleChange}
+            />
+
+            <Button type="submit" variant="contained" fullWidth sx={{ mt: 2 }}>
+              Login
+            </Button>
+
+            <Button fullWidth sx={{ mt: 2 }} onClick={() => navigate("/register")}>
+              Create Account
+            </Button>
+          </form>
+        </Paper>
+      </Box>
+    </Container>
   );
 }
-
-const inputStyle = { margin:"10px 0", padding:"10px", borderRadius:"5px", border:"1px solid #444", background:"#1f2937", color:"#fff" };
-const buttonStyle = { padding:"10px", background:"#4f46e5", color:"#fff", border:"none", borderRadius:"5px", cursor:"pointer", marginTop:"10px" };
-
-export default Login;

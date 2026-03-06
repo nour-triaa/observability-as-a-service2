@@ -1,33 +1,63 @@
-import React, { useState } from "react";
-import Home from "./pages/Home";
-import Register from "./pages/Register";
-import Login from "./pages/Login";
+import { Routes, Route } from "react-router-dom";
+
+import DashboardLayout from "./components/layout/DashboardLayout";
+
 import Dashboard from "./pages/Dashboard";
+import Clients from "./pages/Clients";
+import Metrics from "./pages/Metrics";
+import Settings from "./pages/Settings";
+
+import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 function App() {
-  const [page, setPage] = useState("home");
-  const [user, setUser] = useState(null);
+  return (
+    <Routes>
 
-  const handleLoginOrRegister = (userData) => {
-    setUser(userData);
-    setPage("dashboard");
-  };
+      {/* Authentication */}
+      <Route path="/" element={<Login />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
 
-  const handleLogout = () => {
-    setUser(null);
-    setPage("home");
-  };
+      {/* Dashboard pages */}
+      <Route
+        path="/dashboard"
+        element={
+          <DashboardLayout>
+            <Dashboard />
+          </DashboardLayout>
+        }
+      />
 
-  const renderPage = () => {
-    switch(page) {
-      case "register": return <Register goBack={() => setPage("home")} onSuccess={handleLoginOrRegister} />;
-      case "login": return <Login goBack={() => setPage("home")} onSuccess={handleLoginOrRegister} />;
-      case "dashboard": return <Dashboard user={user} logout={handleLogout} />;
-      default: return <Home onChoose={(p) => setPage(p)} />;
-    }
-  };
+      <Route
+        path="/clients"
+        element={
+          <DashboardLayout>
+            <Clients />
+          </DashboardLayout>
+        }
+      />
 
-  return renderPage();
+      <Route
+        path="/metrics"
+        element={
+          <DashboardLayout>
+            <Metrics />
+          </DashboardLayout>
+        }
+      />
+
+      <Route
+        path="/settings"
+        element={
+          <DashboardLayout>
+            <Settings />
+          </DashboardLayout>
+        }
+      />
+
+    </Routes>
+  );
 }
 
 export default App;

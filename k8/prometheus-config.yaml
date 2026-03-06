@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: observability
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+
+    scrape_configs:
+      # Job pour OpenTelemetry Collector
+      - job_name: 'otel-collector'
+        static_configs:
+          - targets: ['otel-collector.observability.svc.cluster.local:9464']
+
+      # Job pour Node Exporter
+      - job_name: 'node-exporter'
+        static_configs:
+          - targets: ['host.minikube.internal:9100']
+
+      # Job pour Process Exporter (Chrome)
+      - job_name: 'process-exporter'
+        static_configs:
+          - targets: ['host.minikube.internal:9256']

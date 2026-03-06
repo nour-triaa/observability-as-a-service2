@@ -1,7 +1,7 @@
 import axios from "axios";
 
-// ← URL complète que le navigateur doit utiliser
-export const API_URL = "http://myapp.local/api";  // ← complète et accessible depuis le navigateur
+// ← URL complète de ton API Gateway accessible depuis le navigateur
+export const API_URL = "http://myapp.local/api";
 
 const api = axios.create({
   baseURL: API_URL,
@@ -9,6 +9,7 @@ const api = axios.create({
   timeout: 10000,
 });
 
+// Ajoute le token à chaque requête
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -18,13 +19,18 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-export const register = (data) => api.post("/auth/register", data).then(res => res.data);
-export const login = (credentials) => api.post("/auth/authenticate", credentials).then(res => {
-  if (res.data.token) localStorage.setItem("token", res.data.token);
-  return res.data;
-});
-export const getCurrentUser = () => api.get("/auth/me").then(res => res.data);
+// Endpoints
+export const register = (data) =>
+  api.post("/auth/register", data).then((res) => res.data);
+
+export const login = (credentials) =>
+  api.post("/auth/authenticate", credentials).then((res) => {
+    if (res.data.token) localStorage.setItem("token", res.data.token);
+    return res.data;
+  });
+
+export const getCurrentUser = () => api.get("/auth/me").then((res) => res.data);
+
 export const logout = () => localStorage.removeItem("token");
 
 export default api;
-
