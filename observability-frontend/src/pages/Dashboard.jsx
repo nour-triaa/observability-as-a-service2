@@ -1,16 +1,17 @@
+// src/pages/Dashboard.jsx
 import { Typography, Box, Card, CardContent } from "@mui/material";
+import CpuGraph from "../components/metrics/CpuGraph"; // <-- import du composant graphique
 
-export default function Dashboard() {
+export default function DashboardPage() {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "flex-start",
-        backgroundColor: "#111827", // fond principal
-        padding: 4,
+        minHeight: "80vh",
+        bgcolor: "background.default",
+        p: 2,
       }}
     >
       {/* Titre */}
@@ -18,21 +19,39 @@ export default function Dashboard() {
         variant="h3"
         sx={{
           fontWeight: "bold",
-          marginBottom: 4,
-          color: "#ffffff", // texte blanc
+          color: "text.primary",
+          mb: 4,
+          textAlign: "center",
         }}
       >
         Dashboard
       </Typography>
 
-      {/* Carte Grafana */}
+      {/* Carte avec le graphique CPU Node Exporter */}
       <Card
         sx={{
-          width: "80%",
+          width: "100%",
           maxWidth: 900,
+          bgcolor: "background.paper",
           borderRadius: 3,
           boxShadow: 6,
-          backgroundColor: "#1f2937", // fond de la carte
+          mb: 4,
+        }}
+      >
+        <CardContent>
+          <CpuGraph />
+        </CardContent>
+      </Card>
+
+      {/* Si tu veux garder un graphique Grafana iframe (optionnel) */}
+      {/*
+      <Card
+        sx={{
+          width: "100%",
+          maxWidth: 900,
+          bgcolor: "background.paper",
+          borderRadius: 3,
+          boxShadow: 6,
         }}
       >
         <CardContent>
@@ -40,10 +59,15 @@ export default function Dashboard() {
             src="http://grafana.local/d-solo/adlwcvp/chrome?orgId=1&panelId=1"
             width="100%"
             height="400"
-            style={{ border: "none", backgroundColor: "#1f2937" }}
+            style={{
+              border: "none",
+              backgroundColor: "#1f2937",
+              borderRadius: 8,
+            }}
           />
         </CardContent>
       </Card>
+      */}
     </Box>
   );
 }
