@@ -20,12 +20,12 @@ pipeline {
                     // Liste des microservices
                     def services = ['identity-service', 'frontend']
 
-                    // Détecte quels dossiers ont changé depuis le dernier commit
+                    // Détecte quels dossiers ont changé depuis la dernière version sur origin/main
                     def changedServices = []
 
                     for (s in services) {
                         def diff = sh(
-                            script: "git diff --name-only HEAD~1 HEAD | grep '^${s}/' || true",
+                            script: "git diff --name-only origin/main..HEAD | grep '^${s}/' || true",
                             returnStdout: true
                         ).trim()
                         if (diff) {
@@ -44,7 +44,7 @@ pipeline {
 
         stage('Setup Docker & Minikube') {
             when {
-                expression { env.CHANGED_SERVICES }
+                expression { return env.CHANGED_SERVICES?.trim() }
             }
             steps {
                 echo "Initialisation Docker pour Minikube"
@@ -54,7 +54,7 @@ pipeline {
 
         stage('Build Docker Images') {
             when {
-                expression { env.CHANGED_SERVICES }
+                expression { return env.CHANGED_SERVICES?.trim() }
             }
             steps {
                 script {
@@ -70,7 +70,7 @@ pipeline {
 
         stage('Apply Kubernetes Config & Restart') {
             when {
-                expression { env.CHANGED_SERVICES }
+                expression { return env.CHANGED_SERVICES?.trim() }
             }
             steps {
                 script {
@@ -88,15 +88,15 @@ pipeline {
 
         stage('Front-end Deploy Copy') {
             when {
-                expression { env.CHANGED_SERVICES.contains('frontend') }
+                expression { return env.CHANGED_SERVICES?.contains('frontend') }
             }
             steps {
                 echo "Déploiement du front-end uniquement si modifié"
                 sh '''
                 POD=$(kubectl get pods -n $KUBE_NAMESPACE -l app=frontend -o jsonpath="{.items[0].metadata.name}")
-                kubectl exec -it $POD -n $KUBE_NAMESPACE -- rm -rf /usr/share/nginx/html/*
+                kubectl exec $POD -n $KUBE_NAMESPACE -- rm -rf /usr/share/nginx/html/*
                 kubectl cp ./frontend/dist/. $POD:/usr/share/nginx/html -n $KUBE_NAMESPACE
-                kubectl exec -it $POD -n $KUBE_NAMESPACE -- nginx -s reload
+                kubectl exec $POD -n $KUBE_NAMESPACE -- nginx -s reload
                 '''
             }
         }
@@ -105,14 +105,14 @@ pipeline {
             steps {
                 echo "Vérification de la base PostgreSQL"
                 sh '''
-                kubectl exec -it postgres-55b74bf87d-vnxg8 -- psql -U postgres -d observability -c "SELECT COUNT(*) FROM users;"
+                kubectl exec postgres-55b74bf87d-vnxg8 -- psql -U postgres -d observability -c "SELECT COUNT(*) FROM users;"
                 '''
             }
         }
 
         stage('Clean up Docker') {
             when {
-                expression { env.CHANGED_SERVICES }
+                expression { return env.CHANGED_SERVICES?.trim() }
             }
             steps {
                 echo "Nettoyage des anciennes images Docker"
