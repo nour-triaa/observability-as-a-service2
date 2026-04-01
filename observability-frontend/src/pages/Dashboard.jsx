@@ -1,55 +1,73 @@
 // src/pages/Dashboard.jsx
-import { Typography, Box, Card, CardContent } from "@mui/material";
-import CpuGraph from "../components/metrics/CpuGraph"; // Remplace par ton GPUGraph si nécessaire
+import { Grid, Card, CardContent, Typography, Box, Paper } from "@mui/material";
+import { Link } from "react-router-dom";
+import { VMS } from "../data/vms";
+import GlobalCpuGraph from "../components/metrics/GlobalCpuGraph";
 
-export default function DashboardPage() {
+export default function Dashboard() {
   return (
-    <Box
-      sx={{
-        flexGrow: 1,
-        minHeight: "100vh",
-        p: 3,
-        background: "linear-gradient(180deg, #111827 0%, #1e1f2a 100%)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-      }}
-    >
-      {/* Titre principal */}
-      <Typography
-        variant="h3"
+    <Box sx={{ p: 4, background: "#0f172a", minHeight: "100vh" }}>
+      
+      {/* Bloc métriques globales style Grafana */}
+      <Paper
+        elevation={6}
         sx={{
-          fontWeight: 700,
-          color: "text.primary",
-          mb: 4,
-          textAlign: "center",
-        }}
-      >
-        Dashboard
-      </Typography>
-
-      {/* Carte unique pour le graphique */}
-      <Card
-        sx={{
-          width: "100%",
-          maxWidth: 1200, // largeur maximale du graphique
-          bgcolor: "background.paper",
+          p: 4,
+          mb: 6,
           borderRadius: 3,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
-          transition: "0.3s",
-          "&:hover": {
-            transform: "translateY(-5px)",
-            boxShadow: "0 12px 32px rgba(0,0,0,0.7)",
-          },
+          background: "linear-gradient(135deg, #1e293b 0%, #334155 100%)",
         }}
       >
-        <CardContent>
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-            GPU Usage
-          </Typography>
-          <CpuGraph /> {/* Remplace CpuGraph par GPUGraph si tu as un vrai composant GPU */}
-        </CardContent>
-      </Card>
+        <Typography variant="h5" sx={{ color: "#f1f5f9", mb: 3 }}>
+          Vue globale CPU de toutes les VMs
+        </Typography>
+        <Box sx={{ height: "350px" }}>
+          <GlobalCpuGraph />
+        </Box>
+      </Paper>
+
+      {/* Tableau des tenants et VMs */}
+      <Typography variant="h6" sx={{ color: "#f1f5f9", mb: 3 }}>
+        Tenants et VMs
+      </Typography>
+      <Grid container spacing={3}>
+        {VMS.map((vm) => (
+          <Grid item xs={12} sm={6} md={4} lg={3} key={vm.name}>
+            <Link to={`/vm/${vm.name}`} style={{ textDecoration: "none" }}>
+              <Card
+                sx={{
+                  background: "linear-gradient(120deg, #334155 0%, #1e293b 100%)",
+                  color: "white",
+                  p: 2,
+                  cursor: "pointer",
+                  transition: "0.3s",
+                  "&:hover": {
+                    transform: "scale(1.05)",
+                    boxShadow: "0 0 20px rgba(96,165,250,0.7)",
+                  },
+                }}
+              >
+                <CardContent>
+                  <Typography variant="h6">{vm.name}</Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "#60a5fa", fontWeight: "bold" }}
+                  >
+                    {vm.tenant}
+                  </Typography>
+                  {/* Préparer pour d'autres métriques */}
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "#34d399", mt: 1 }}
+                  >
+                    CPU: {vm.cpu || "—"}% | Memory: {vm.memory || "—"}%
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Link>
+          </Grid>
+        ))}
+      </Grid>
     </Box>
   );
 }

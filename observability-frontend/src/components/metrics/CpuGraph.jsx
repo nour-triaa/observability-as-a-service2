@@ -1,5 +1,6 @@
 // src/components/metrics/CpuGraph.jsx
 import { useEffect, useState } from "react";
+import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -10,88 +11,59 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
-import { Line } from "react-chartjs-2";
 
-// On doit enregistrer les composants Chart.js
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-export default function CpuGraph() {
+export default function CpuGraph({ ip }) {
   const [chartData, setChartData] = useState({ labels: [], datasets: [] });
 
   useEffect(() => {
     async function fetchData() {
       try {
-        // Timestamp actuel et il y a 24h
         const end = Math.floor(Date.now() / 1000);
-        const start = end - 24 * 60 * 60; // 24 heures en secondes
-        const step = 60; // 1 minute entre chaque point
+        const start = end - 3600; // dernière heure
+        const step = 30;
+
+        // Prometheus query pour CPU de la VM via Node Exporter
+        const query = `rate(node_cpu_seconds_total{instance="${ip}:9100"}[5m])`;
 
         const response = await fetch(
-          `http://prometheus.local/api/v1/query_range?query=process_cpu_seconds_total{job="node-exporter"}&start=${start}&end=${end}&step=${step}`
+          `http://prometheus.local/api/v1/query_range?query=${encodeURIComponent(query)}&start=${start}&end=${end}&step=${step}`
         );
 
         const data = await response.json();
 
-        // Vérification des résultats
         if (data.status !== "success" || !data.data.result.length) {
-          throw new Error("Pas de données CPU disponibles");
+          console.warn("Pas de données CPU disponibles pour", ip);
+          return;
         }
 
-        const result = data.data.result[0]; // On prend la première métrique
-
+        const result = data.data.result[0];
         const labels = result.values.map(v => {
-          const date = new Date(v[0] * 1000);
-          return `${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`;
+          const d = new Date(v[0] * 1000);
+          return `${d.getHours()}:${d.getMinutes()}:${d.getSeconds()}`;
         });
-
-        const cpuValues = result.values.map(v => parseFloat(v[1]));
+        const values = result.values.map(v => parseFloat(v[1]));
 
         setChartData({
           labels,
           datasets: [
             {
-              label: "CPU Node Exporter",
-              data: cpuValues,
-              fill: false,
-              borderColor: "rgba(75, 192, 192, 1)",
-              backgroundColor: "rgba(75, 192, 192, 0.2)",
-              tension: 0.3, // rend la ligne plus douce
+              label: "CPU Usage (%)",
+              data: values,
+              borderColor: "#4ade80",
+              backgroundColor: "rgba(74,222,128,0.2)",
+              tension: 0.4,
             },
           ],
         });
       } catch (err) {
-        console.error("Erreur fetch frontend:", err);
+        console.error("Erreur fetch CPU:", err);
       }
     }
 
     fetchData();
-  }, []);
+  }, [ip]);
 
-  return (
-    <div style={{ width: "100%", maxWidth: 900 }}>
-      <Line data={chartData} options={{
-        responsive: true,
-        plugins: {
-          legend: { position: "top" },
-          title: { display: true, text: "CPU Usage - Last 24h" },
-        },
-        scales: {
-          x: {
-            title: { display: true, text: "Time" },
-          },
-          y: {
-            title: { display: true, text: "CPU Seconds" },
-          },
-        },
-      }} />
-    </div>
-  );
+  return <Line data={chartData} options={{ responsive: true, plugins: { legend: { display: true } } }} />;
 }
