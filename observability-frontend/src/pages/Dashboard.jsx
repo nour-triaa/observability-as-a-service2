@@ -1,9 +1,7 @@
 // src/pages/Dashboard.jsx
 import { useState, useEffect } from "react";
-import { Grid, Card, CardContent, Typography, Box, Paper, CircularProgress } from "@mui/material";
+import { Grid, Card, CardContent, Typography, Box, Paper, CircularProgress, Chip } from "@mui/material";
 import { Link } from "react-router-dom";
-
-// Garder tes VMS pour la section détaillée
 import { VMS } from "../data/vms";
 
 export default function Dashboard() {
@@ -13,30 +11,37 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchMetrics = async () => {
       setLoading(true);
-      const end = Math.floor(Date.now() / 1000);
-      const start = end - 60 * 5; // 5 dernières minutes
-      const step = 30;
 
       const metricsData = {};
 
       for (const vm of VMS) {
         try {
-          // Exemple : mémoire utilisée
-          const query = `(1 - (node_memory_MemAvailable_bytes{instance="${vm.ip}:9100"} / node_memory_MemTotal_bytes{instance="${vm.ip}:9100"})) * 100`;
-          const response = await fetch(
-            `http://prometheus.local/api/v1/query_range?query=${encodeURIComponent(query)}&start=${start}&end=${end}&step=${step}`
+          // Vérifier si l'instance est UP
+          const upQuery = `up{instance="${vm.ip}:9100"}`;
+          const memQuery = `(1 - (node_memory_MemAvailable_bytes{instance="${vm.ip}:9100"} / node_memory_MemTotal_bytes{instance="${vm.ip}:9100"})) * 100`;
+
+          // Récupération du statut UP
+          const upResp = await fetch(
+            `http://prometheus.local/api/v1/query?query=${encodeURIComponent(upQuery)}`
           );
-          const data = await response.json();
-          const lastValue =
-            data?.data?.result?.[0]?.values?.slice(-1)[0]?.[1] ?? null;
+          const upData = await upResp.json();
+          const isUp = upData?.data?.result?.[0]?.value?.[1] === "1";
+
+          // Récupération de la mémoire
+          const memResp = await fetch(
+            `http://prometheus.local/api/v1/query_range?query=${encodeURIComponent(memQuery)}&start=${Math.floor(Date.now() / 1000) - 300}&end=${Math.floor(Date.now() / 1000)}&step=30`
+          );
+          const memData = await memResp.json();
+          const lastValue = memData?.data?.result?.[0]?.values?.slice(-1)[0]?.[1] ?? null;
 
           metricsData[vm.name] = {
             tenant: vm.tenant,
             memoryUsage: lastValue ? parseFloat(lastValue).toFixed(2) : "—",
+            status: isUp ? "Running" : "Stopped",
           };
         } catch (err) {
           console.error(`Erreur pour ${vm.name}:`, err);
-          metricsData[vm.name] = { tenant: vm.tenant, memoryUsage: "Erreur" };
+          metricsData[vm.name] = { tenant: vm.tenant, memoryUsage: "Erreur", status: "Stopped" };
         }
       }
 
@@ -47,11 +52,32 @@ export default function Dashboard() {
     fetchMetrics();
   }, []);
 
+  const totalVMs = Object.keys(metrics).length;
+
   return (
     <Box sx={{ p: 4, background: "#0f172a", minHeight: "100vh" }}>
+      
+      {/* 🔹 Nombre total de VMs disponibles */}
+      <Paper
+        elevation={6}
+        sx={{
+          p: 3,
+          borderRadius: 3,
+          background: "linear-gradient(135deg, #1e293b 0%, #334155 100%)",
+          mb: 6,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <Typography variant="h4" sx={{ color: "#f1f5f9" }}>
+          VMs Disponibles: {totalVMs}
+        </Typography>
+      </Paper>
+
       {/* 🔹 Tableau Prometheus */}
       <Typography variant="h5" sx={{ color: "#f1f5f9", mb: 3 }}>
-        Metrics VMs (Memory Usage)
+        Metrics VMs (Memory Usage & Status)
       </Typography>
 
       <Paper
@@ -69,6 +95,7 @@ export default function Dashboard() {
                 <Box component="th" sx={{ color: "#f1f5f9", textAlign: "left", p: 1 }}>VM Name</Box>
                 <Box component="th" sx={{ color: "#f1f5f9", textAlign: "left", p: 1 }}>Tenant</Box>
                 <Box component="th" sx={{ color: "#f1f5f9", textAlign: "left", p: 1 }}>Memory Usage (%)</Box>
+                <Box component="th" sx={{ color: "#f1f5f9", textAlign: "left", p: 1 }}>Status</Box>
               </Box>
             </Box>
             <Box component="tbody">
@@ -77,6 +104,13 @@ export default function Dashboard() {
                   <Box component="td" sx={{ color: "#f1f5f9", p: 1 }}>{vmName}</Box>
                   <Box component="td" sx={{ color: "#60a5fa", fontWeight: "bold", p: 1 }}>{data.tenant}</Box>
                   <Box component="td" sx={{ color: "#34d399", p: 1 }}>{data.memoryUsage}</Box>
+                  <Box component="td" sx={{ p: 1 }}>
+                    <Chip
+                      label={data.status}
+                      color={data.status === "Running" ? "success" : "error"}
+                      size="small"
+                    />
+                  </Box>
                 </Box>
               ))}
             </Box>
@@ -113,6 +147,13 @@ export default function Dashboard() {
                   <Typography variant="body2" sx={{ color: "#34d399", mt: 1 }}>
                     CPU: {vm.cpu || "—"}% | Memory: {vm.memory || "—"}% | Network: {vm.network || "—"}%
                   </Typography>
+                  {/* Statut basé sur Prometheus */}
+                  <Chip
+                    label={metrics[vm.name]?.status || "Unknown"}
+                    color={metrics[vm.name]?.status === "Running" ? "success" : metrics[vm.name]?.status === "Stopped" ? "error" : "default"}
+                    size="small"
+                    sx={{ mt: 1 }}
+                  />
                 </CardContent>
               </Card>
             </Link>
