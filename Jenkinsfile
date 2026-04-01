@@ -14,38 +14,7 @@ pipeline {
             }
         }
 
-        stage('Detect Changes') {
-            steps {
-                script {
-                    // Liste des microservices
-                    def services = ['identity-service', 'frontend']
-
-                    // Détecte quels dossiers ont changé depuis la dernière version sur origin/main
-                    def changedServices = []
-
-                    for (s in services) {
-                        def diff = sh(
-                            script: "git diff --name-only origin/main..HEAD | grep '^${s}/' || true",
-                            returnStdout: true
-                        ).trim()
-                        if (diff) {
-                            echo "${s} a été modifié"
-                            changedServices.add(s)
-                        } else {
-                            echo "${s} n'a pas été modifié"
-                        }
-                    }
-
-                    // Stocke les services modifiés pour les étapes suivantes
-                    env.CHANGED_SERVICES = changedServices.join(' ')
-                }
-            }
-        }
-
         stage('Setup Docker & Minikube') {
-            when {
-                expression { return env.CHANGED_SERVICES?.trim() }
-            }
             steps {
                 echo "Initialisation Docker pour Minikube"
                 sh 'eval $(minikube -p $MINIKUBE_PROFILE docker-env)'
@@ -53,45 +22,26 @@ pipeline {
         }
 
         stage('Build Docker Images') {
-            when {
-                expression { return env.CHANGED_SERVICES?.trim() }
-            }
             steps {
-                script {
-                    if (env.CHANGED_SERVICES.contains('identity-service')) {
-                        sh 'docker build -t identity-service:latest ./identity-service'
-                    }
-                    if (env.CHANGED_SERVICES.contains('frontend')) {
-                        sh 'docker build -t observability-frontend:latest ./frontend'
-                    }
-                }
+                echo "Build des images Docker"
+                sh 'docker build -t identity-service:latest ./identity-service'
+                sh 'docker build -t observability-frontend:latest ./frontend'
             }
         }
 
         stage('Apply Kubernetes Config & Restart') {
-            when {
-                expression { return env.CHANGED_SERVICES?.trim() }
-            }
             steps {
-                script {
-                    if (env.CHANGED_SERVICES.contains('identity-service')) {
-                        sh 'kubectl apply -f identity.yaml -n $KUBE_NAMESPACE'
-                        sh 'kubectl rollout restart deployment identity-service -n $KUBE_NAMESPACE'
-                    }
-                    if (env.CHANGED_SERVICES.contains('frontend')) {
-                        sh 'kubectl apply -f frontend.yaml -n $KUBE_NAMESPACE'
-                        sh 'kubectl rollout restart deployment frontend -n $KUBE_NAMESPACE'
-                    }
-                }
+                echo "Appliquer configs et restart des déploiements"
+                sh 'kubectl apply -f identity.yaml -n $KUBE_NAMESPACE'
+                sh 'kubectl rollout restart deployment identity-service -n $KUBE_NAMESPACE'
+                sh 'kubectl apply -f frontend.yaml -n $KUBE_NAMESPACE'
+                sh 'kubectl rollout restart deployment frontend -n $KUBE_NAMESPACE'
             }
         }
 
         stage('Front-end Deploy Copy') {
-            when {
-                expression { return env.CHANGED_SERVICES?.contains('frontend') }
-            }
             steps {
-                echo "Déploiement du front-end uniquement si modifié"
+                echo "Déploiement du front-end"
                 sh '''
                 POD=$(kubectl get pods -n $KUBE_NAMESPACE -l app=frontend -o jsonpath="{.items[0].metadata.name}")
                 kubectl exec $POD -n $KUBE_NAMESPACE -- rm -rf /usr/share/nginx/html/*
@@ -104,16 +54,11 @@ pipeline {
         stage('Database Check') {
             steps {
                 echo "Vérification de la base PostgreSQL"
-                sh '''
-                kubectl exec postgres-55b74bf87d-vnxg8 -- psql -U postgres -d observability -c "SELECT COUNT(*) FROM users;"
-                '''
+                sh 'kubectl exec postgres-55b74bf87d-vnxg8 -- psql -U postgres -d observability -c "SELECT COUNT(*) FROM users;"'
             }
         }
 
         stage('Clean up Docker') {
-            when {
-                expression { return env.CHANGED_SERVICES?.trim() }
-            }
             steps {
                 echo "Nettoyage des anciennes images Docker"
                 sh 'docker rmi -f identity-service:latest || true'
