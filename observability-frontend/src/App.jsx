@@ -1,19 +1,25 @@
-// src/App.jsx
 import { Routes, Route } from "react-router-dom";
 
+// Layout
 import DashboardLayout from "./components/layout/DashboardLayout";
 
+// Pages
 import Dashboard from "./pages/Dashboard";
 import Clients from "./pages/Clients";
 import Metrics from "./pages/Metrics";
 import Settings from "./pages/Settings";
-import VmDetails from "./pages/VmDetails";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import VmDetails from "./pages/VmDetails"; // Page dédiée aux metrics par VM
 
-// Nouveaux composants pour metrics
-import KeyMetricsTable from "./components/metrics/KeyMetricsTable";
-import EventTimeline from "./components/metrics/EventTimeline";
+// Graphs et composants métriques (Dashboard + VmDetails)
+import CpuGraph from "./components/metrics/CpuGraph";
+import CpuReadyGraph from "./components/metrics/CpuReadyGraph";
+import DiskUsage from "./components/metrics/DiskUsage";
+import PowerStatus from "./components/metrics/PowerStatus";
+import VmToolsStatus from "./components/metrics/VmToolsStatus";
+import NetworkGraph from "./components/metrics/NetworkGraph";
+import LatencyGraph from "./components/metrics/LatencyGraph";
 
 function App() {
   return (
@@ -45,11 +51,6 @@ function App() {
         element={
           <DashboardLayout>
             <Metrics />
-            <h2>Key Metrics</h2>
-            <KeyMetricsTable />
-
-            <h2>Event Timeline</h2>
-            <EventTimeline />
           </DashboardLayout>
         }
       />
@@ -62,7 +63,7 @@ function App() {
         }
       />
 
-      {/* Pages pour chaque VM */}
+      {/* Page dédiée à chaque VM */}
       <Route
         path="/vm/:name"
         element={

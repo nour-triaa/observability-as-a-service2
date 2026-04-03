@@ -1,4 +1,3 @@
-// src/components/metrics/MemoryGraph.jsx
 import { useEffect, useState } from "react";
 import { Line } from "react-chartjs-2";
 import {
@@ -14,51 +13,93 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-export default function MemoryGraph({ ip }) {
-  const [chartData, setChartData] = useState({ labels: [], datasets: [] });
+export default function MemoryGraph({ vmName }) {
+  const [data, setData] = useState({ labels: [], datasets: [] });
+  const [error, setError] = useState(false); // pour détecter les VMs sans VMware Tools
 
   useEffect(() => {
     async function fetchData() {
       try {
         const end = Math.floor(Date.now() / 1000);
-        const start = end - 3600;
+        const start = end - 3600; // dernière heure
         const step = 30;
 
-        const query = `(1 - (node_memory_MemAvailable_bytes{instance="${ip}:9100"} / node_memory_MemTotal_bytes{instance="${ip}:9100"})) * 100`;
+        const fetchMetric = async (metric) => {
+          const res = await fetch(
+            `http://prometheus.local/api/v1/query_range?query=${encodeURIComponent(
+              `${metric}{vm_name="${vmName}"}`
+            )}&start=${start}&end=${end}&step=${step}`
+          );
+          const json = await res.json();
+          return json.data.result.length ? json.data.result[0].values : [];
+        };
 
-        const response = await fetch(
-          `http://prometheus.local/api/v1/query_range?query=${encodeURIComponent(query)}&start=${start}&end=${end}&step=${step}`
-        );
+        const consumedValues = await fetchMetric("vmware_vm_mem_consumed_average");
+        const activeValues = await fetchMetric("vmware_vm_mem_active_average");
 
-        const data = await response.json();
-        if (data.status !== "success" || !data.data.result.length) return;
+        // Si aucune valeur n'est retournée, VMware Tools manquant
+        if (!consumedValues.length || !activeValues.length) {
+          setError(true);
+          setData({ labels: [], datasets: [] });
+          return;
+        }
 
-        const result = data.data.result[0];
-        const labels = result.values.map(v => {
-          const d = new Date(v[0] * 1000);
-          return `${d.getHours()}:${d.getMinutes()}`;
+        setError(false);
+
+        // Calcul Memory Usage % (mem_used / mem_guest)
+        const memoryPercent = consumedValues.map((v, i) => {
+          const consumed = parseFloat(v[1]);
+          const active = parseFloat(activeValues[i]?.[1] || 0);
+          return active > 0 ? ((consumed / active) * 100).toFixed(1) : 0;
         });
-        const values = result.values.map(v => parseFloat(v[1]));
 
-        setChartData({
-          labels,
+        setData({
+          labels: consumedValues.map(v => new Date(v[0] * 1000).toLocaleTimeString()),
           datasets: [
             {
-              label: "RAM Usage (%)",
-              data: values,
+              label: "Memory Usage (%)",
+              data: memoryPercent,
               borderColor: "#60a5fa",
               backgroundColor: "rgba(96,165,250,0.2)",
               tension: 0.4,
+              fill: true,
             },
           ],
         });
       } catch (err) {
-        console.error("Erreur fetch RAM:", err);
+        console.error("Erreur fetch MemoryGraph:", err);
+        setError(true);
       }
     }
 
     fetchData();
-  }, [ip]);
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, [vmName]);
 
-  return <Line data={chartData} options={{ responsive: true, plugins: { legend: { display: true } } }} />;
+  if (error) {
+    return (
+      <div style={{ color: "red", fontWeight: "bold", textAlign: "center", marginTop: 20 }}>
+        Impossible de récupérer les données mémoire pour {vmName} (VMware Tools absent ?)
+      </div>
+    );
+  }
+
+  return (
+    <Line
+      data={data}
+      options={{
+        responsive: true,
+        plugins: {
+          legend: { display: true, position: "top" },
+          title: { display: true, text: `Memory Usage - ${vmName}`, color: "#f1f5f9", font: { size: 16 } },
+          tooltip: { mode: "index", intersect: false },
+        },
+        scales: {
+          y: { beginAtZero: true, max: 100, title: { display: true, text: "Memory (%)", color: "#f1f5f9" } },
+          x: { title: { display: true, text: "Time", color: "#f1f5f9" } },
+        },
+      }}
+    />
+  );
 }

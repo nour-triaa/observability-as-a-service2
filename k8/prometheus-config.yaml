@@ -7,38 +7,17 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
-
     scrape_configs:
       # Job pour OpenTelemetry Collector
       - job_name: 'otel-collector'
         static_configs:
           - targets: ['otel-collector.observability.svc.cluster.local:9464']
-
       # Job pour Node Exporter (K8s)
       - job_name: 'node-exporter'
         static_configs:
           - targets: ['node-exporter.observability.svc.cluster.local:9100']
-
-      # Job pour toutes les VMs ESXi
-      - job_name: "esxi-vms"
+      # Job pour VMware Exporter (métriques ESXi + VMs)
+      - job_name: 'vmware_exporter'
         static_configs:
-          - targets: ["192.168.18.138:9100"]
-            labels:
-              vm_name: "lubuntu1"
-              tenant: "tenant1"
-          - targets: ["192.168.18.138:9100"]
-            labels:
-              vm_name: "lubuntu2"
-              tenant: "tenant2"
-          - targets: ["192.168.18.143:9100"]
-            labels:
-              vm_name: "mx1"
-              tenant: "tenant3"
-          - targets: ["192.168.18.143:9100"]
-            labels:
-              vm_name: "mx2"
-              tenant: "tenant4"
-          - targets: ["192.168.18.136:9100"]
-            labels:
-              vm_name: "hyperviseur1"
-              tenant: "VMware ESXI"
+          - targets: ['192.168.18.131:9272']
+        metrics_path: /metrics
