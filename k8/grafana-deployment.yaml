@@ -24,17 +24,31 @@ spec:
             - name: GF_SECURITY_ALLOW_EMBEDDING
               value: "true"
 
-            # 👇 AJOUTE ÇA
+            # ✅ Anonymous access
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "true"
             - name: GF_AUTH_ANONYMOUS_ORG_ROLE
               value: "Viewer"
+            - name: GF_AUTH_ANONYMOUS_ORG_NAME
+              value: "Main Org."
+
+            # ✅ Cookies
+            - name: GF_SECURITY_COOKIE_SAMESITE
+              value: "disabled"
+
+            # ✅ CORS (important pour ton frontend)
+            - name: GF_CORS_ENABLED
+              value: "true"
+            - name: GF_CORS_ALLOWED_ORIGINS
+              value: "*"
 
           ports:
             - containerPort: 3000
+
           volumeMounts:
             - name: grafana-storage
               mountPath: /var/lib/grafana
+
       volumes:
         - name: grafana-storage
           persistentVolumeClaim:

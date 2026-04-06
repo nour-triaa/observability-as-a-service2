@@ -12,13 +12,30 @@ data:
             - job_name: 'node-exporter'
               static_configs:
                 - targets: ['host.minikube.internal:9100']
-
+      otlp:
+        protocols:
+          http:
+            endpoint: 0.0.0.0:4318
+          grpc:
+            endpoint: 0.0.0.0:4317
+    processors:
+      batch:
     exporters:
       prometheus:
         endpoint: "0.0.0.0:9464"
-
+      otlphttp/signoz:
+        endpoint: http://signoz-otel-collector.observability.svc.cluster.local:4318
     service:
       pipelines:
         metrics:
           receivers: [prometheus]
+          processors: [batch]
           exporters: [prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlphttp/signoz]
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlphttp/signoz]

@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: observability
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+    positions:
+      filename: /tmp/positions.yaml
+    scrape_configs:
+      - job_name: esxi-syslog
+        syslog:
+          listen_address: 0.0.0.0:1514
+          listen_protocol: udp
+          idle_timeout: 60s
+          label_structured_data: true
+          labels:
+            job: esxi
+        relabel_configs:
+          - source_labels: [__syslog_message_hostname]
+            target_label: host

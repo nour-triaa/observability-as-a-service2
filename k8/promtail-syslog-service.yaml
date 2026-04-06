@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: promtail-syslog
+  namespace: observability
+spec:
+  selector:
+    app: promtail
+  type: NodePort
+  ports:
+    - name: syslog-udp
+      protocol: UDP
+      port: 1514
+      targetPort: 1514
+      nodePort: 31514

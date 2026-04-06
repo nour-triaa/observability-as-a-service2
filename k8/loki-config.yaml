@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  namespace: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      containers:
+        - name: loki
+          image: grafana/loki:2.8.2
+          args:
+            - "-config.file=/etc/loki/loki-config.yaml"
+          volumeMounts:
+            - name: loki-config
+              mountPath: /etc/loki
+            - name: loki-storage
+              mountPath: /loki
+      volumes:
+        - name: loki-config
+          configMap:
+            name: loki-config
+        - name: loki-storage
+          persistentVolumeClaim:
+            claimName: loki-pvc
