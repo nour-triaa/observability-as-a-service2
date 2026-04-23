@@ -1,0 +1,30 @@
+groups:
+- name: vmware-alerts
+  rules:
+
+  - alert: VMDown
+    expr: vmware_vm_power_state == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "VM is OFF"
+      description: "VM {{ $labels.vm_name }} is powered off"
+
+  - alert: HighCPUUsageHost
+    expr: vmware_host_cpu_usage > 2000
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High CPU usage"
+      description: "Host {{ $labels.host_name }} CPU is high"
+
+  - alert: LowDatastoreSpace
+    expr: vmware_datastore_freespace_size < 5000000000
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Low datastore space"
+      description: "Datastore {{ $labels.ds_name }} is almost full"

@@ -87,12 +87,13 @@ async function fetchErrorCount(expr, win = "5m") {
 }
 
 // ─── SigNoz Alerts ───────────────────────────────────────────────────────────
+// Retourne null en cas d'erreur réseau (pour ne pas écraser le state existant)
 async function fetchSigNozAlerts() {
   try {
     const res = await fetch(SIGNOZ_ALERTS);
-    if (!res.ok) return [];
+    if (!res.ok) return null;
     return await res.json();
-  } catch { return []; }
+  } catch { return null; }
 }
 
 // ─── Alert type detector ──────────────────────────────────────────────────────
@@ -112,18 +113,38 @@ function detectAlertType(alert) {
 
 // ─── NotificationBar ─────────────────────────────────────────────────────────
 function NotificationBar({ alerts }) {
-  const [open,   setOpen]   = useState(false);
-  const [filter, setFilter] = useState("all");
-  const [sel,    setSel]    = useState(null);
-  const ref                 = useRef(null);
+  const [open,      setOpen]      = useState(false);
+  const [filter,    setFilter]    = useState("all");
+  const [sel,       setSel]       = useState(null);
+  // readCount = nombre d'alertes actives marquées comme lues à la dernière ouverture
+  const [readCount, setReadCount] = useState(0);
+  const ref                       = useRef(null);
 
   const active   = alerts.filter(a => !a.resolved);
   const resolved = alerts.filter(a =>  a.resolved);
   const critical = active.filter(a => a.severity === "critical");
   const warning  = active.filter(a => a.severity === "warning");
 
+  // Nombre d'alertes non lues = nouvelles actives arrivées depuis la dernière ouverture
+  const unread = Math.max(0, active.length - readCount);
+
+  // Si de nouvelles alertes arrivent pendant que le panneau est fermé,
+  // on réduit readCount pour que le delta apparaisse comme non-lu.
+  // Si des alertes disparaissent (résolues), on ajuste aussi.
   useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setSel(null); } };
+    if (!open) {
+      setReadCount(prev => Math.min(prev, active.length));
+    }
+  }, [active.length, open]);
+
+  // Fermer le panneau en cliquant en dehors
+  useEffect(() => {
+    const h = e => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+        setSel(null);
+      }
+    };
     if (open) document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
@@ -137,13 +158,23 @@ function NotificationBar({ alerts }) {
   const sevColor = s => s === "critical" ? T.red : s === "warning" ? T.orange : T.blue;
   const sevLight = s => s === "critical" ? T.redLight : s === "warning" ? T.orangeLight : T.blueLight;
 
+  // À l'ouverture : marque toutes les alertes actives actuelles comme lues
+  const handleToggle = () => {
+    if (!open) {
+      setReadCount(active.length);
+    }
+    setOpen(o => !o);
+    setSel(null);
+  };
+
   return (
     <div ref={ref} style={{ position:"relative" }}>
-      <button onClick={() => { setOpen(o => !o); setSel(null); }}
+      <button
+        onClick={handleToggle}
         style={{
           position:"relative", width:40, height:40, borderRadius:10,
-          border:`1.5px solid ${active.length > 0 ? T.redBorder : T.border}`,
-          background: active.length > 0 ? T.redLight : T.surface,
+          border:`1.5px solid ${unread > 0 ? T.redBorder : T.border}`,
+          background: unread > 0 ? T.redLight : T.surface,
           cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
           transition:"all 0.18s", boxShadow: T.shadow,
         }}
@@ -151,11 +182,12 @@ function NotificationBar({ alerts }) {
         onMouseLeave={e => { e.currentTarget.style.transform="translateY(0)";    e.currentTarget.style.boxShadow=T.shadow; }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke={active.length > 0 ? T.red : T.textSub} strokeWidth="2" strokeLinecap="round">
+          stroke={unread > 0 ? T.red : T.textSub} strokeWidth="2" strokeLinecap="round">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
           <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
         </svg>
-        {active.length > 0 && (
+        {/* Badge : disparaît quand unread === 0 */}
+        {unread > 0 && (
           <span style={{
             position:"absolute", top:-5, right:-5,
             minWidth:18, height:18, borderRadius:9, padding:"0 4px",
@@ -164,7 +196,7 @@ function NotificationBar({ alerts }) {
             display:"flex", alignItems:"center", justifyContent:"center",
             border:"2px solid #fff",
           }}>
-            {active.length > 9 ? "9+" : active.length}
+            {unread}
           </span>
         )}
       </button>
@@ -396,9 +428,17 @@ function SectionLabel({ children }) {
   );
 }
 
-function GraphBox({ children }) {
+// ─── GraphBox ─────────────────────────────────────────────────────────────────
+function GraphBox({ children, tall = false }) {
   return (
-    <div style={{ borderRadius:12, background:T.surface, border:`1px solid ${T.border}`, padding:"16px 18px", marginBottom:12 }}>
+    <div style={{
+      borderRadius: 14,
+      background: T.surface,
+      border: `1px solid ${T.border}`,
+      padding: tall ? "22px 24px" : "16px 18px",
+      marginBottom: 12,
+      boxShadow: tall ? T.shadowMd : T.shadow,
+    }}>
       {children}
     </div>
   );
@@ -504,7 +544,7 @@ function DatastoreBar({ dsData }) {
   );
 }
 
-// ─── AlertPanel — compteurs uniquement, sans liste d'alertes ─────────────────
+// ─── AlertPanel ───────────────────────────────────────────────────────────────
 function AlertPanel({ signozAlerts, logs, errorCounts, loadingAlerts }) {
   const active   = signozAlerts.filter(a => !a.resolved);
   const resolved = signozAlerts.filter(a =>  a.resolved);
@@ -521,8 +561,6 @@ function AlertPanel({ signozAlerts, logs, errorCounts, loadingAlerts }) {
 
   return (
     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
-
-      {/* Alertes — compteurs uniquement */}
       <div style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:"20px 22px", boxShadow:T.shadow }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -549,8 +587,6 @@ function AlertPanel({ signozAlerts, logs, errorCounts, loadingAlerts }) {
             ))}
           </div>
         </div>
-
-        {/* Compteurs d'erreurs */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
           {[
             { label:"Timeouts (5m)",   count:errorCounts.timeout,    color:T.orange, light:T.orangeLight },
@@ -566,7 +602,6 @@ function AlertPanel({ signozAlerts, logs, errorCounts, loadingAlerts }) {
         </div>
       </div>
 
-      {/* Logs live */}
       <div style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:"20px 22px", boxShadow:T.shadow }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
           <div style={{ width:30, height:30, borderRadius:8, background:T.blueLight, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -625,7 +660,6 @@ function HostCpuChart({ cpuUsage, cpuMax }) {
       dataDemand.push(Math.max(0.05, base * 0.82 + (Math.random()-0.5)*0.3));
     }
 
-    // Dynamically import Chart.js
     import("chart.js/auto").then(({ default: Chart }) => {
       if (chartRef.current) chartRef.current.destroy();
       chartRef.current = new Chart(canvasRef.current, {
@@ -809,14 +843,21 @@ function VmCard({ vm, isOpen, onToggle, index }) {
           <MemoryBar consumedKB={memData.consumedKB} totalMB={memData.totalMB}/>
         </div>
       </div>
-      <div style={{ maxHeight:isOpen?"4000px":"0", overflow:"hidden", transition:"max-height 0.6s cubic-bezier(0.4,0,0.2,1)" }}>
-        <div style={{ borderTop:`1px solid ${T.border}`, padding:"4px 22px 24px", background:T.surfaceAlt }}>
+
+      <div style={{ maxHeight:isOpen?"6000px":"0", overflow:"hidden", transition:"max-height 0.6s cubic-bezier(0.4,0,0.2,1)" }}>
+        <div style={{ borderTop:`1px solid ${T.border}`, padding:"4px 22px 28px", background:T.surfaceAlt }}>
+
           <SectionLabel>Processeur</SectionLabel>
-          <GraphBox><CpuGraph vmName={vm.name}/></GraphBox>
+          <GraphBox tall>
+            <CpuGraph vmName={vm.name}/>
+          </GraphBox>
+
           <SectionLabel>Stockage</SectionLabel>
           <GraphBox><DiskUsage vmName={vm.name}/></GraphBox>
+
           <SectionLabel>Alimentation</SectionLabel>
           <GraphBox><PowerStatus vmName={vm.name}/></GraphBox>
+
           <SectionLabel>Réseau</SectionLabel>
           <GraphBox><NetworkGraph vmName={vm.name}/></GraphBox>
         </div>
@@ -852,7 +893,8 @@ export default function Dashboard() {
         fetchErrorCount('{job="esxi"} |= "Accepted password for user root"'),
       ]),
     ]);
-    setSignozAlerts(sa);
+    // null = erreur réseau → on conserve le state existant pour ne pas tout effacer
+    if (sa !== null) setSignozAlerts(sa);
     setLogs(l);
     setErrorCounts({ timeout:ec[0], disk:ec[1], scoreboard:ec[2], login:ec[3] });
     setLoadingAlerts(false);
@@ -910,12 +952,9 @@ export default function Dashboard() {
     return () => { clearInterval(di); clearInterval(ai); clearInterval(ti); };
   }, [fetchVMs, fetchAlerts]);
 
-  // Disponibilité calculée sur toutes les VMs (online / total)
   const online  = vms.filter(v => v.powerState === "Online").length;
   const offline = vms.filter(v => v.powerState === "Offline").length;
-  const uptime  = vms.length > 0
-    ? `${((online / vms.length) * 100).toFixed(0)}%`
-    : "—";
+  const uptime  = vms.length > 0 ? `${((online / vms.length) * 100).toFixed(0)}%` : "—";
 
   const totalErrors  = errorCounts.timeout + errorCounts.disk + errorCounts.scoreboard;
   const activeAlerts = signozAlerts.filter(a => !a.resolved);
@@ -998,12 +1037,10 @@ export default function Dashboard() {
           <HostInfoBar hostData={hostData}/>
           <DatastoreBar dsData={dsData}/>
 
-          {/* Graphique CPU Hyperviseur */}
           {hostData && (
             <HostCpuChart cpuUsage={hostData.cpuUsage} cpuMax={hostData.cpuMax}/>
           )}
 
-          {/* Stat cards */}
           <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:14 }}>
             <StatCard
               label="En ligne" value={online}
@@ -1038,7 +1075,6 @@ export default function Dashboard() {
             loadingAlerts={loadingAlerts}
           />
 
-          {/* VM nav */}
           {vms.length > 0 && (
             <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
               {vms.map(vm => {

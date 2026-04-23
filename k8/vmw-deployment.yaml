@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vmw-ml-analyzer
+  namespace: default
+  labels:
+    app: vmw-ml-analyzer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vmw-ml-analyzer
+  template:
+    metadata:
+      labels:
+        app: vmw-ml-analyzer
+    spec:
+      containers:
+        - name: vmw-ml-analyzer
+          image: vmware-ml-analyzer:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5000
+          env:
+            - name: PROMETHEUS_URL
+              value: "http://prometheus.local/api/v1"
+            - name: LOKI_URL
+              value: "http://loki.local/loki/api/v1"
+            # Décommente si auth nécessaire :
+            # - name: PROMETHEUS_USER
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: observability-secrets
+            #       key: prom-user
+            # - name: PROMETHEUS_PASS
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: observability-secrets
+            #       key: prom-pass
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
