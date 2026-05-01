@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: veeam2-ingress
+  namespace: default
+  labels:
+    app: veeam2
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: veeam2.local
+      http:
+        paths:
+          - path: /veeam2(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: veeam2-service
+                port:
+                  number: 80

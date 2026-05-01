@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: veeam-collector
+  namespace: default
+  labels:
+    app: veeam-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: veeam-collector
+  template:
+    metadata:
+      labels:
+        app: veeam-collector
+    spec:
+      containers:
+        - name: veeam-collector
+          image: veeam-collector:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5050
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5050
+            initialDelaySeconds: 10
+            periodSeconds: 15

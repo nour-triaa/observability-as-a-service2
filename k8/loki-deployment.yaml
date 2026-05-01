@@ -16,7 +16,7 @@ spec:
       initContainers:
         - name: init-loki-dirs
           image: busybox
-          command: ["sh", "-c", "mkdir -p /loki/index /loki/cache /loki/chunks && chmod -R 777 /loki"]
+          command: ["sh", "-c", "mkdir -p /loki/index /loki/cache /loki/chunks /loki/wal /loki/compactor && chmod -R 777 /loki"]
           volumeMounts:
             - name: loki-storage
               mountPath: /loki
@@ -38,3 +38,4 @@ spec:
             name: loki-config
         - name: loki-storage
           emptyDir: {}
+

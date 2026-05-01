@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: veeam2
+  namespace: default
+  labels:
+    app: veeam2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: veeam2
+  template:
+    metadata:
+      labels:
+        app: veeam2
+    spec:
+      containers:
+        - name: veeam2
+          image: veeam2-microservice:latest   # remplace par ton image registry si besoin
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: TZ
+              value: "UTC"
+          volumeMounts:
+            - name: veeam2-data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /veeam2/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /veeam2/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+      volumes:
+        - name: veeam2-data
+          persistentVolumeClaim:
+            claimName: veeam2-data-pvc

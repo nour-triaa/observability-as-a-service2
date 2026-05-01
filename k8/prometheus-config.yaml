@@ -19,9 +19,9 @@ data:
       # Job pour VMware Exporter (métriques ESXi + VMs)
       - job_name: 'vmware_exporter'
         static_configs:
-          - targets: ['192.168.1.141:9272']
+          - targets: ['192.168.1.136:9272']
         metrics_path: /metrics
       # Job pour OTel Collector VM
       - job_name: 'otel-collector-vm'
         static_configs:
-          - targets: ['192.168.1.141:9464']
+          - targets: ['192.168.1.136:9464']
