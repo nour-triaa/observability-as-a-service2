@@ -7,21 +7,30 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
+      evaluation_interval: 15s        # ← ajouter
+
+    rule_files:                        # ← ajouter
+      - /etc/prometheus/rules/*.yml
+
+    alerting:                          # ← ajouter (optionnel pour l'instant)
+      alertmanagers:
+        - static_configs:
+            - targets: []             # laisser vide si pas d'Alertmanager encore
+
     scrape_configs:
-      # Job pour OpenTelemetry Collector
       - job_name: 'otel-collector'
         static_configs:
           - targets: ['otel-collector.observability.svc.cluster.local:9464']
-      # Job pour Node Exporter (K8s)
+
       - job_name: 'node-exporter'
         static_configs:
           - targets: ['node-exporter.observability.svc.cluster.local:9100']
-      # Job pour VMware Exporter (métriques ESXi + VMs)
+
       - job_name: 'vmware_exporter'
         static_configs:
           - targets: ['192.168.1.136:9272']
         metrics_path: /metrics
-      # Job pour OTel Collector VM
+
       - job_name: 'otel-collector-vm'
         static_configs:
           - targets: ['192.168.1.136:9464']

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-analyzer-service
+  namespace: default
+  labels:
+    app: ai-analyzer
+spec:
+  selector:
+    app: ai-analyzer
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP   # Accessible depuis les autres pods du cluster

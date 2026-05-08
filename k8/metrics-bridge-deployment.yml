@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-bridge
+  namespace: default
+  labels:
+    app: metrics-bridge
+    version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-bridge
+  template:
+    metadata:
+      labels:
+        app: metrics-bridge
+    spec:
+      containers:
+        - name: metrics-bridge
+          image: metrics-bridge:latest
+          imagePullPolicy: Never        # image buildée localement dans Minikube
+          ports:
+            - containerPort: 3001
+          env:
+            - name: PORT
+              value: "3001"
+            - name: AI_ANALYZER_URL
+              value: "http://ai-analyzer.local"
+            - name: PROM_URL
+              value: "http://prometheus.local/api/v1/query"
+            - name: PROM_RANGE_URL
+              value: "http://prometheus.local/api/v1/query_range"
+            - name: PROM_ALERTS_URL
+              value: "http://prometheus.local/api/v1/alerts"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metrics-bridge-svc
+  namespace: default
+  labels:
+    app: metrics-bridge
+spec:
+  selector:
+    app: metrics-bridge
+  ports:
+    - name: http
+      port: 3001
+      targetPort: 3001
+  type: ClusterIP

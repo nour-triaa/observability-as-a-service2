@@ -1,0 +1,219 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: observability
+
+data:
+  vmware-alerts.yml: |
+    groups:
+      - name: vmware.alerts
+        rules:
+
+          # ───────────────── Exporter ─────────────────
+
+          - alert: VMwareExporterDown
+            expr: up{job="vmware_exporter"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "VMware Exporter injoignable"
+              description: "L'exporter VMware {{ $labels.instance }} ne répond plus."
+
+          # ───────────────── VM Power ─────────────────
+
+          - alert: VMPoweredOff
+            expr: vmware_vm_power_state{job="vmware_exporter"} == 0
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "VM éteinte : {{ $labels.vm_name }}"
+              description: "La VM {{ $labels.vm_name }} sur {{ $labels.host_name }} est hors tension."
+
+          # ───────────────── Datastore ─────────────────
+
+          - alert: DatastoreLowFreeSpace
+            expr: (vmware_datastore_freespace_size / vmware_datastore_capacity_size) * 100 < 20
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Espace disque critique : {{ $labels.ds_name }}"
+              description: "Datastore {{ $labels.ds_name }} a moins de 20% d'espace libre ({{ $value | printf \"%.1f\" }}%)."
+
+          # ───────────────── VMware Tools ─────────────────
+
+          - alert: VMwareToolsNotRunning
+            expr: vmware_vm_guest_tools_running_status{tools_status="toolsNotRunning"} == 1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "VMware Tools arrêtés : {{ $labels.vm_name }}"
+              description: "Les VMware Tools ne tournent pas sur la VM {{ $labels.vm_name }}."
+
+          # ───────────────── Snapshots ─────────────────
+
+          - alert: OldVMSnapshot
+            expr: (time() - vmware_vm_snapshot_timestamp_seconds) / 86400 > 7
+            for: 0m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Vieux snapshot : {{ $labels.vm_name }}"
+              description: "La VM {{ $labels.vm_name }} a un snapshot '{{ $labels.vm_snapshot_name }}' vieux de {{ $value | printf \"%.0f\" }} jours."
+
+          # ───────────────── Host CPU ─────────────────
+
+          - alert: HostHighCPUWarning
+            expr: (vmware_host_cpu_usage / vmware_host_cpu_max) * 100 > 65
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "CPU hôte élevé : {{ $labels.host_name }}"
+              description: "Le CPU de l'hôte {{ $labels.host_name }} dépasse 65% ({{ $value | printf \"%.1f\" }}%)."
+
+          - alert: HostHighCPUCritical
+            expr: (vmware_host_cpu_usage / vmware_host_cpu_max) * 100 > 85
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "CPU critique sur {{ $labels.host_name }}"
+              description: "Le CPU de l'hôte {{ $labels.host_name }} dépasse 85% ({{ $value | printf \"%.1f\" }}%)."
+
+          # ───────────────── Host Memory ─────────────────
+
+          - alert: HostHighMemoryWarning
+            expr: (vmware_host_memory_usage / vmware_host_memory_max) * 100 > 65
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Mémoire élevée sur {{ $labels.host_name }}"
+              description: "La mémoire de l'hôte {{ $labels.host_name }} dépasse 65% ({{ $value | printf \"%.1f\" }}%)."
+
+          - alert: HostHighMemoryCritical
+            expr: (vmware_host_memory_usage / vmware_host_memory_max) * 100 > 85
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Mémoire critique sur {{ $labels.host_name }}"
+              description: "La mémoire de l'hôte {{ $labels.host_name }} dépasse 85% ({{ $value | printf \"%.1f\" }}%)."
+
+          # ───────────────── VM CPU ─────────────────
+
+          - alert: VMHighCPUWarning
+            expr: vmware_vm_cpu_usage_average > 65
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "CPU VM élevé : {{ $labels.vm_name }}"
+              description: "Le CPU de la VM {{ $labels.vm_name }} dépasse 65% ({{ $value | printf \"%.1f\" }}%)."
+
+          - alert: VMHighCPUCritical
+            expr: vmware_vm_cpu_usage_average > 85
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "CPU critique VM : {{ $labels.vm_name }}"
+              description: "Le CPU de la VM {{ $labels.vm_name }} dépasse 85% ({{ $value | printf \"%.1f\" }}%)."
+
+          # ───────────────── VM Memory ─────────────────
+
+          - alert: VMHighMemoryWarning
+            expr: vmware_vm_mem_usage_average > 65
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Mémoire VM élevée : {{ $labels.vm_name }}"
+              description: "La mémoire de la VM {{ $labels.vm_name }} dépasse 65% ({{ $value | printf \"%.1f\" }}%)."
+
+          - alert: VMHighMemoryCritical
+            expr: vmware_vm_mem_usage_average > 85
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Mémoire critique VM : {{ $labels.vm_name }}"
+              description: "La mémoire de la VM {{ $labels.vm_name }} dépasse 85% ({{ $value | printf \"%.1f\" }}%)."
+
+          # ───────────────── VM Disk Latency ─────────────────
+
+          - alert: VMHighDiskLatencyWarning
+            expr: vmware_vm_disk_maxTotalLatency_latest > 20
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Latence disque élevée : {{ $labels.vm_name }}"
+              description: "La latence disque de la VM {{ $labels.vm_name }} dépasse 20 ms ({{ $value | printf \"%.1f\" }} ms)."
+
+          - alert: VMHighDiskLatencyCritical
+            expr: vmware_vm_disk_maxTotalLatency_latest > 50
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Latence disque critique : {{ $labels.vm_name }}"
+              description: "La latence disque de la VM {{ $labels.vm_name }} dépasse 50 ms ({{ $value | printf \"%.1f\" }} ms)."
+
+          # ───────────────── VM Disk Usage ─────────────────
+
+          - alert: VMHighDiskUsageWarning
+            expr: vmware_vm_disk_usage_average > 65
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Utilisation disque élevée : {{ $labels.vm_name }}"
+              description: "Le disque de la VM {{ $labels.vm_name }} dépasse 65% ({{ $value | printf \"%.1f\" }}%)."
+
+          - alert: VMHighDiskUsageCritical
+            expr: vmware_vm_disk_usage_average > 85
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Utilisation disque critique : {{ $labels.vm_name }}"
+              description: "Le disque de la VM {{ $labels.vm_name }} dépasse 85% ({{ $value | printf \"%.1f\" }}%)."
+
+          # ───────────────── VM Network ─────────────────
+
+          - alert: VMNetworkDroppedPackets
+            expr: vmware_vm_net_droppedRx_summation > 0 or vmware_vm_net_droppedTx_summation > 0
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Paquets réseau perdus : {{ $labels.vm_name }}"
+              description: "La VM {{ $labels.vm_name }} perd des paquets réseau."
+
+          # ───────────────── VM CPU Ready ─────────────────
+
+          - alert: VMCPUReadyHigh
+            expr: vmware_vm_cpu_ready_summation > 1000
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "CPU Ready élevé : {{ $labels.vm_name }}"
+              description: "Le CPU Ready de la VM {{ $labels.vm_name }} est élevé ({{ $value }})."
+
+          # ───────────────── VM Swapped Memory ─────────────────
+
+          - alert: VMMemorySwapping
+            expr: vmware_vm_mem_swapped_average > 0
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Mémoire swappée : {{ $labels.vm_name }}"
+              description: "La VM {{ $labels.vm_name }} utilise du swap mémoire."
