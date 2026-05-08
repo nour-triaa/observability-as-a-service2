@@ -47,9 +47,15 @@ const SANS = "'DM Sans', system-ui, sans-serif";
 // ─── API endpoints ────────────────────────────────────────────────────────────
 const PROM          = "http://prometheus.local/api/v1/query";
 const PROM_RANGE    = "http://prometheus.local/api/v1/query_range";
+const PROM_ALERTS   = "http://prometheus.local/api/v1/alerts";
 const LOKI_URL      = "http://loki.local/loki/api/v1";
 const SIGNOZ_ALERTS = "http://alerts.local/api/alerts";
-const VEEAM_URL = "http://veeam-collector.local/data";
+const VEEAM_URL     = "http://veeam-collector.local/data";
+
+// ─── Metrics Bridge endpoints ─────────────────────────────────────────────────
+const METRICS_BRIDGE = "http://metrics-bridge.local";
+const MB_METRICS     = `${METRICS_BRIDGE}/api/metrics-analysis`;
+const MB_ALERTS      = `${METRICS_BRIDGE}/api/alerts-analysis`;
 
 // ─── Fetch Function ─────────────────────────────────────────────────────────
 async function fetchVeeamJob() {
@@ -63,11 +69,351 @@ async function fetchVeeamJob() {
   }
 }
 
-// ─── VeeamBackupCard - Design Professionnel ───────────────────────────────────
-// ─── VeeamBackupCard - Design Professionnel Observabilité ─────────────────────
-// DROP-IN REPLACEMENT — aucune logique modifiée, uniquement le rendu visuel.
-// Remplace l'intégralité de la fonction VeeamBackupCard dans Dashboard.jsx
+// ─── Fetch Metrics Bridge ─────────────────────────────────────────────────────
+async function fetchBridgeMetrics(service = "all") {
+  try {
+    const res = await fetch(`${MB_METRICS}?service=${service}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
 
+async function fetchBridgeAlerts() {
+  try {
+    const res = await fetch(MB_ALERTS);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+// ─── Fetch Prometheus Alerts ─────────────────────────────────────────────────
+async function fetchPrometheusAlerts() {
+  try {
+    const res = await fetch(PROM_ALERTS);
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json?.data?.alerts || [];
+  } catch {
+    return [];
+  }
+}
+
+// ─── PrometheusAlertPanel ─────────────────────────────────────────────────────
+function PrometheusAlertPanel({ alerts }) {
+  const [filter, setFilter] = useState("all");
+  const [expanded, setExpanded] = useState(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const firing  = alerts.filter(a => a.state === "firing");
+  const pending = alerts.filter(a => a.state === "pending");
+
+  const critical = alerts.filter(a => a.labels?.severity === "critical");
+  const warning  = alerts.filter(a => a.labels?.severity === "warning");
+
+  const filtered =
+    filter === "firing"   ? firing   :
+    filter === "pending"  ? pending  :
+    filter === "critical" ? critical :
+    filter === "warning"  ? warning  :
+    alerts;
+
+  const alertMeta = (alert) => {
+    const name = alert.labels?.alertname || "";
+    if (name === "DatastoreLowFreeSpace") return { icon: "💾", color: T.red,    light: T.redLight,    border: T.redBorder,    label: "Stockage" };
+    if (name === "VMPoweredOff")          return { icon: "⏻",  color: T.orange, light: T.orangeLight, border: T.orangeBorder, label: "VM éteinte" };
+    if (name === "VMwareToolsNotRunning") return { icon: "🔧", color: T.purple, light: T.purpleLight, border: T.purpleBorder, label: "VMware Tools" };
+    if (name.toLowerCase().includes("cpu"))     return { icon: "⚡", color: T.orange, light: T.orangeLight, border: T.orangeBorder, label: "CPU" };
+    if (name.toLowerCase().includes("memory"))  return { icon: "🧠", color: T.purple, light: T.purpleLight, border: T.purpleBorder, label: "Mémoire" };
+    if (name.toLowerCase().includes("network")) return { icon: "🌐", color: T.cyan,   light: T.cyanLight,   border: T.cyanBorder,   label: "Réseau" };
+    return { icon: "⚠",  color: T.yellow, light: T.yellowLight, border: T.yellowBorder, label: "Alerte" };
+  };
+
+  const stateColor  = s => s === "firing"  ? T.red    : s === "pending" ? T.orange : T.blue;
+  const stateLight  = s => s === "firing"  ? T.redLight : s === "pending" ? T.orangeLight : T.blueLight;
+  const stateBorder = s => s === "firing"  ? T.redBorder : s === "pending" ? T.orangeBorder : T.blueBorder;
+  const stateLabel  = s => s === "firing"  ? "ACTIF"   : s === "pending" ? "EN ATTENTE" : s?.toUpperCase();
+
+  const sevColor  = s => s === "critical" ? T.red    : s === "warning" ? T.orange : T.blue;
+  const sevLight  = s => s === "critical" ? T.redLight : s === "warning" ? T.orangeLight : T.blueLight;
+  const sevBorder = s => s === "critical" ? T.redBorder : s === "warning" ? T.orangeBorder : T.blueBorder;
+
+  const fmtDate = iso => {
+    try { return new Date(iso).toLocaleString("fr-FR"); } catch { return "—"; }
+  };
+
+  const fmtValue = (alert) => {
+    const v = parseFloat(alert.value);
+    if (isNaN(v)) return null;
+    const name = alert.labels?.alertname || "";
+    if (name === "DatastoreLowFreeSpace") return `${v.toFixed(1)}% libre`;
+    if (v === 0) return null;
+    return `valeur: ${v}`;
+  };
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div
+        onClick={() => setCollapsed(c => !c)}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          cursor: "pointer", userSelect: "none", marginBottom: collapsed ? 0 : 12,
+        }}
+      >
+        <div style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.textMuted,
+          textTransform: "uppercase", fontFamily: MONO,
+          display: "flex", alignItems: "center", gap: 8, flex: 1,
+        }}>
+          <span style={{ flex: 1, height: "1px", background: T.border }}/>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={T.textMuted} strokeWidth="2.2" strokeLinecap="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            Alertes Métriques
+          </span>
+          <span style={{ flex: 1, height: "1px", background: T.border }}/>
+        </div>
+        <svg
+          width="13" height="13" viewBox="0 0 24 24" fill="none"
+          stroke={T.textMuted} strokeWidth="2.5" strokeLinecap="round"
+          style={{ marginLeft: 10, transform: collapsed ? "rotate(-90deg)" : "rotate(0)", transition: "transform 0.25s" }}
+        >
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+
+      {!collapsed && (
+        <div style={{
+          background: T.surface, border: `1px solid ${T.border}`,
+          borderRadius: 16, overflow: "hidden", boxShadow: T.shadow,
+        }}>
+          <div style={{
+            height: 3,
+            background: firing.length > 0
+              ? `linear-gradient(90deg, ${T.red} 0%, ${T.orange} 100%)`
+              : `linear-gradient(90deg, ${T.orange} 0%, ${T.yellow} 100%)`,
+          }}/>
+
+          <div style={{ padding: "20px 24px 16px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                  background: firing.length > 0 ? T.redLight : T.orangeLight,
+                  border: `1px solid ${firing.length > 0 ? T.redBorder : T.orangeBorder}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+                    stroke={firing.length > 0 ? T.red : T.orange} strokeWidth="2" strokeLinecap="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: T.text, fontFamily: SANS, letterSpacing: "-0.01em" }}>
+                    Alertes sur métriques
+                  </div>
+                  <div style={{ fontSize: 11, color: T.textMuted, fontFamily: MONO, marginTop: 2 }}></div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                {[
+                  { count: firing.length,   color: T.red,    light: T.redLight,    label: "ACTIFS"   },
+                  { count: pending.length,  color: T.orange, light: T.orangeLight, label: "PENDING"  },
+                  { count: critical.length, color: T.red,    light: T.redLight,    label: "CRITIQUE" },
+                  { count: warning.length,  color: T.yellow, light: T.yellowLight, label: "WARNING"  },
+                ].map(({ count, color, light, label }) => (
+                  <div key={label} style={{
+                    padding: "8px 14px", borderRadius: 10, background: light,
+                    display: "flex", flexDirection: "column", alignItems: "center", minWidth: 52,
+                  }}>
+                    <span style={{ fontSize: 22, fontWeight: 900, color, fontFamily: MONO, lineHeight: 1 }}>{count}</span>
+                    <span style={{ fontSize: 8, color, fontFamily: MONO, letterSpacing: "0.1em", marginTop: 3 }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {[
+                { k: "all",      l: `Toutes (${alerts.length})` },
+                { k: "firing",   l: `Actives (${firing.length})` },
+                { k: "pending",  l: `Pending (${pending.length})` },
+                { k: "critical", l: `Critiques (${critical.length})` },
+                { k: "warning",  l: `Warnings (${warning.length})` },
+              ].map(f => (
+                <button key={f.k} onClick={() => { setFilter(f.k); setExpanded(null); }} style={{
+                  padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+                  fontSize: 10, fontWeight: 600, fontFamily: SANS,
+                  background: filter === f.k ? T.blue : T.surfaceAlt,
+                  color:      filter === f.k ? "#fff" : T.textMuted,
+                  transition: "all 0.12s",
+                }}>{f.l}</button>
+              ))}
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "36px 20px", borderTop: `1px solid ${T.border}` }}>
+              <div style={{ fontSize: 26, marginBottom: 8 }}>✓</div>
+              <div style={{ fontSize: 13, color: T.green, fontFamily: SANS, fontWeight: 600 }}>Aucune alerte dans cette catégorie</div>
+              <div style={{ fontSize: 11, color: T.textMuted, fontFamily: MONO, marginTop: 4 }}>Tout est opérationnel</div>
+            </div>
+          ) : (
+            <div style={{ borderTop: `1px solid ${T.border}` }}>
+              {filtered.map((alert, i) => {
+                const meta = alertMeta(alert);
+                const isExp = expanded === i;
+                const sc = stateColor(alert.state);
+                const sl = stateLight(alert.state);
+                const severity = alert.labels?.severity || "info";
+                const valStr = fmtValue(alert);
+
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      borderBottom: i < filtered.length - 1 ? `1px solid rgba(0,0,0,0.05)` : "none",
+                      borderLeft: `3px solid ${sc}`,
+                      background: isExp ? T.surfaceAlt : "transparent",
+                      transition: "background 0.15s",
+                    }}
+                  >
+                    <div
+                      onClick={() => setExpanded(isExp ? null : i)}
+                      style={{
+                        padding: "14px 22px", cursor: "pointer",
+                        display: "flex", alignItems: "center", gap: 12,
+                      }}
+                      onMouseEnter={e => { if (!isExp) e.currentTarget.style.background = T.surfaceHover; }}
+                      onMouseLeave={e => { if (!isExp) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <div style={{
+                        width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                        background: meta.light, border: `1px solid ${meta.border}`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 16,
+                      }}>{meta.icon}</div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: MONO }}>
+                            {alert.labels?.vm_name || alert.labels?.ds_name || alert.labels?.host_name || alert.labels?.alertname}
+                          </span>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 5,
+                            background: meta.light, color: meta.color, fontFamily: MONO,
+                          }}>{meta.label}</span>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 5,
+                            background: sevLight(severity), color: sevColor(severity),
+                            border: `1px solid ${sevBorder(severity)}`, fontFamily: MONO,
+                          }}>{severity.toUpperCase()}</span>
+                          {valStr && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 5,
+                              background: T.purpleLight, color: T.purple, fontFamily: MONO,
+                            }}>{valStr}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: T.textMuted, fontFamily: MONO, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {alert.annotations?.summary || alert.labels?.alertname}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <span style={{
+                          fontSize: 9, fontWeight: 800, padding: "4px 10px", borderRadius: 6,
+                          background: sl, color: sc, fontFamily: MONO, letterSpacing: "0.06em",
+                          border: `1px solid ${stateBorder(alert.state)}`,
+                          display: "flex", alignItems: "center", gap: 5,
+                        }}>
+                          <span style={{
+                            width: 5, height: 5, borderRadius: "50%", background: sc, display: "block",
+                            animation: alert.state === "firing" ? "blink 2s ease-in-out infinite" : "none",
+                          }}/>
+                          {stateLabel(alert.state)}
+                        </span>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                          stroke={T.textMuted} strokeWidth="2.5" strokeLinecap="round"
+                          style={{ transform: isExp ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.22s" }}>
+                          <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                      </div>
+                    </div>
+
+                    <div style={{
+                      maxHeight: isExp ? "500px" : "0",
+                      overflow: "hidden",
+                      transition: "max-height 0.35s cubic-bezier(0.4,0,0.2,1)",
+                    }}>
+                      <div style={{
+                        margin: "0 22px 16px",
+                        borderRadius: 12,
+                        border: `1px solid ${T.border}`,
+                        overflow: "hidden",
+                        background: T.surface,
+                      }}>
+                        {alert.annotations?.description && (
+                          <div style={{
+                            padding: "14px 16px",
+                            borderBottom: `1px solid ${T.border}`,
+                            fontSize: 12, color: T.textSub, fontFamily: SANS, lineHeight: 1.6,
+                          }}>
+                            {alert.annotations.description}
+                          </div>
+                        )}
+
+                        <div style={{
+                          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                          gap: 1, background: T.border,
+                        }}>
+                          {[
+                            { label: "Alertname",    value: alert.labels?.alertname },
+                            { label: "Hôte",         value: alert.labels?.host_name },
+                            { label: "VM / DS",      value: alert.labels?.vm_name || alert.labels?.ds_name },
+                            { label: "Datacenter",   value: alert.labels?.dc_name },
+                            { label: "Instance",     value: alert.labels?.instance },
+                            { label: "Job",          value: alert.labels?.job },
+                            { label: "État",         value: stateLabel(alert.state) },
+                            { label: "Actif depuis", value: fmtDate(alert.activeAt) },
+                          ].filter(r => r.value).map(({ label, value }) => (
+                            <div key={label} style={{ background: T.surface, padding: "10px 14px" }}>
+                              <div style={{ fontSize: 9, color: T.textMuted, fontFamily: MONO, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>{label}</div>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: T.text, fontFamily: MONO, wordBreak: "break-all" }}>{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{
+            padding: "10px 22px", borderTop: `1px solid ${T.border}`,
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            background: T.surfaceAlt,
+          }}>
+            <span style={{ fontSize: 10, color: T.textMuted, fontFamily: MONO }}>
+              Actualisation automatique · 30s
+            </span>
+            <a href="http://prometheus.local/alerts" target="_blank" rel="noreferrer"
+              style={{ fontSize: 11, color: T.blue, fontFamily: SANS, textDecoration: "none", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+              Ouvrir Prometheus
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── VeeamBackupCard ──────────────────────────────────────────────────────────
 function VeeamBackupCard({ data }) {
   const isLoading = data === undefined;
   const noData    = data === null;
@@ -76,7 +422,6 @@ function VeeamBackupCard({ data }) {
   const collectedAt  = data?.collected_at;
   const global       = data?.global || {};
 
-  // ── Calculs (identiques à l'original) ──────────────────────────────────────
   const rpoValues = jobs.map(j => j.rpo?.minutes).filter(m => typeof m === "number");
   const rtoValues = jobs.map(j => j.rto?.minutes).filter(m => typeof m === "number");
   const avgRPO    = rpoValues.length > 0 ? Math.round(rpoValues.reduce((a,b) => a+b,0) / rpoValues.length) : null;
@@ -94,7 +439,6 @@ function VeeamBackupCard({ data }) {
     return parts.join(" ");
   };
 
-  // ── États de chargement / vide ─────────────────────────────────────────────
   if (isLoading) {
     return (
       <GraphBox>
@@ -124,7 +468,6 @@ function VeeamBackupCard({ data }) {
     );
   }
 
-  // ── Couleurs helpers ────────────────────────────────────────────────────────
   const slaColor  = pct => pct > 90 ? T.green : T.red;
   const lastCollect = collectedAt ? new Date(collectedAt).toLocaleString("fr-FR") : "—";
   const slaGlobal   = global.sla_pct;
@@ -133,7 +476,6 @@ function VeeamBackupCard({ data }) {
     <div style={{ marginBottom: 20 }}>
       <SectionLabel>Backup & Replication</SectionLabel>
 
-      {/* ────────────────────────────── HEADER PANEL ──────────────────────────── */}
       <div style={{
         background: T.surface,
         border: `1px solid ${T.border}`,
@@ -142,17 +484,14 @@ function VeeamBackupCard({ data }) {
         overflow: "hidden",
         boxShadow: T.shadow,
       }}>
-        {/* bande accent haut */}
         <div style={{
           height: 3,
           background: `linear-gradient(90deg, ${T.blue} 0%, ${T.purple} 50%, ${T.cyan} 100%)`,
         }}/>
 
         <div style={{ padding: "20px 24px" }}>
-          {/* Titre + timestamp */}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {/* Icône */}
               <div style={{
                 width: 40, height: 40, borderRadius: 10,
                 background: "linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)",
@@ -174,7 +513,6 @@ function VeeamBackupCard({ data }) {
                 </div>
               </div>
             </div>
-            {/* Badge SLA global */}
             <div style={{
               padding: "6px 14px",
               borderRadius: 8,
@@ -189,7 +527,6 @@ function VeeamBackupCard({ data }) {
             </div>
           </div>
 
-          {/* Métriques globales en 4 colonnes */}
           <div style={{
             display: "grid",
             gridTemplateColumns: "repeat(4, 1fr)",
@@ -258,7 +595,6 @@ function VeeamBackupCard({ data }) {
         </div>
       </div>
 
-      {/* ────────────────────────────── JOB CARDS ─────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 14 }}>
         {jobs.map((job, index) => {
           const isRunning   = job.is_running === true;
@@ -280,6 +616,7 @@ function VeeamBackupCard({ data }) {
             lastResult === "Warning" ? T.orangeBorder : T.greenBorder;
 
           const stateLabel  = isRunning ? "EN COURS" : lastResult;
+          const slaColor    = pct => pct > 90 ? T.green : T.red;
 
           return (
             <div
@@ -303,14 +640,11 @@ function VeeamBackupCard({ data }) {
                 e.currentTarget.style.borderColor = T.border;
               }}
             >
-              {/* Barre de statut en haut */}
               <div style={{ height: 2, background: stateColor, opacity: 0.8 }}/>
 
               <div style={{ padding: "20px 22px" }}>
-                {/* Header Job */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-                    {/* Dot statut */}
                     <div style={{
                       width: 8, height: 8, borderRadius: "50%", background: stateColor, flexShrink: 0,
                       animation: isRunning ? "blink 2s ease-in-out infinite" : "none",
@@ -325,7 +659,6 @@ function VeeamBackupCard({ data }) {
                     </div>
                   </div>
 
-                  {/* Badge état */}
                   <div style={{
                     padding: "4px 12px",
                     borderRadius: 6,
@@ -345,7 +678,6 @@ function VeeamBackupCard({ data }) {
                   </div>
                 </div>
 
-                {/* Progress Bar si job en cours */}
                 {isRunning && job.progress && (
                   <div style={{
                     margin: "16px 0",
@@ -358,7 +690,6 @@ function VeeamBackupCard({ data }) {
                       <span style={{ fontSize: 11, color: T.blue, fontFamily: MONO, fontWeight: 600 }}>Progression</span>
                       <span style={{ fontSize: 13, fontWeight: 900, color: T.blue, fontFamily: MONO }}>{job.progress.pct || 0}%</span>
                     </div>
-                    {/* Track segmenté */}
                     <div style={{ height: 6, background: "rgba(37,99,235,0.15)", borderRadius: 999, overflow: "hidden", position: "relative" }}>
                       <div style={{
                         width: `${job.progress.pct || 0}%`,
@@ -375,10 +706,8 @@ function VeeamBackupCard({ data }) {
                   </div>
                 )}
 
-                {/* Séparateur */}
                 <div style={{ height: 1, background: T.border, margin: "16px 0" }}/>
 
-                {/* Métriques RPO / RTO / SLA */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                   {[
                     { label: "RPO",     value: job.rpo?.human   || "—", color: T.orange, bg: T.orangeLight, border: T.orangeBorder },
@@ -402,7 +731,6 @@ function VeeamBackupCard({ data }) {
                   ))}
                 </div>
 
-                {/* Dates */}
                 <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 5 }}>
                   {[
                     {
@@ -959,18 +1287,11 @@ function AlertPanel({ signozAlerts, logs, errorCounts, loadingAlerts }) {
 }
 
 // ─── HostCpuChart ─────────────────────────────────────────────────────────────
-// FIX : useEffect dépend de [pct] et récupère le vrai historique via query_range
-// ─── HostCpuChart ─────────────────────────────────────────────────────────────
-// Calcul exact ESXi : vmware_host_cpu_usage (MHz) / vmware_host_cpu_max (MHz) × 100
-// Axe Y fixé 0–100 %. Historique réel via query_range Prometheus (30 min, pas 30s).
 function HostCpuChart({ cpuUsage, cpuMax }) {
   const canvasRef  = useRef(null);
   const chartRef   = useRef(null);
 
-  // ── Calcul exact du % courant ──────────────────────────────────────────────
-  // Identique au calcul ESXi natif : usage_MHz / max_MHz × 100
   const pctNow = cpuMax > 0 ? (cpuUsage / cpuMax) * 100 : 0;
-  // Couleur dynamique selon charge
   const pctColor = pctNow >= 85 ? T.red : pctNow >= 60 ? T.orange : T.blue;
 
   useEffect(() => {
@@ -980,16 +1301,14 @@ function HostCpuChart({ cpuUsage, cpuMax }) {
 
     async function buildChart() {
       const endTs   = Math.floor(Date.now() / 1000);
-      const startTs = endTs - 30 * 60; // 30 minutes d'historique
-      const step    = 30;              // granularité 30 secondes
+      const startTs = endTs - 30 * 60;
+      const step    = 30;
 
       let labels    = [];
-      let dataUsage = []; // % exact  = usage_MHz / max_MHz × 100
+      let dataUsage = [];
 
       try {
-        // ── 1. Récupère l'historique usage (MHz) sur 30 min ──────────────────
         const urlUsage = `${PROM_RANGE}?query=${encodeURIComponent("vmware_host_cpu_usage")}&start=${startTs}&end=${endTs}&step=${step}`;
-        // ── 2. Récupère l'historique max (MHz) sur 30 min ────────────────────
         const urlMax   = `${PROM_RANGE}?query=${encodeURIComponent("vmware_host_cpu_max")}&start=${startTs}&end=${endTs}&step=${step}`;
 
         const [resUsage, resMax] = await Promise.all([fetch(urlUsage), fetch(urlMax)]);
@@ -998,16 +1317,13 @@ function HostCpuChart({ cpuUsage, cpuMax }) {
         const valsUsage = jsonUsage?.data?.result?.[0]?.values || [];
         const valsMax   = jsonMax?.data?.result?.[0]?.values   || [];
 
-        // Construit un map ts → max_MHz pour aligner les deux séries
         const maxMap = {};
         valsMax.forEach(([ts, val]) => { maxMap[ts] = parseFloat(val); });
 
         if (valsUsage.length > 0) {
           valsUsage.forEach(([ts, usageVal]) => {
             const usageMHz = parseFloat(usageVal);
-            // Utilise le max du même instant si dispo, sinon cpuMax passé en prop
             const maxMHz   = maxMap[ts] ?? cpuMax;
-            // ── Calcul exact % CPU ESXi ──────────────────────────────────────
             const pct = maxMHz > 0 ? Math.min((usageMHz / maxMHz) * 100, 100) : 0;
 
             const d = new Date(parseInt(ts) * 1000);
@@ -1017,7 +1333,6 @@ function HostCpuChart({ cpuUsage, cpuMax }) {
         }
       } catch {}
 
-      // ── Fallback : si Prometheus inaccessible, on trace un point unique ──
       if (dataUsage.length === 0) {
         labels    = ["maintenant"];
         dataUsage = [parseFloat(pctNow.toFixed(2))];
@@ -1083,7 +1398,6 @@ function HostCpuChart({ cpuUsage, cpuMax }) {
                 ticks:  { font: { family: MONO, size: 10 }, color: T.textMuted, maxTicksLimit: 8, maxRotation: 0 },
               },
               y: {
-                // ── Axe Y fixé 0–100 % ──────────────────────────────────────
                 min: 0,
                 max: 100,
                 grid:   { color: "rgba(0,0,0,0.04)" },
@@ -1106,12 +1420,10 @@ function HostCpuChart({ cpuUsage, cpuMax }) {
       destroyed = true;
       if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
     };
-  // Se redessine à chaque nouvelle valeur cpuUsage / cpuMax reçue du parent
   }, [cpuUsage, cpuMax]);
 
   return (
     <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 14, padding: "20px 24px", marginBottom: 14, boxShadow: T.shadow }}>
-      {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: pctNow >= 85 ? T.redLight : pctNow >= 60 ? T.orangeLight : T.blueLight, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -1131,13 +1443,11 @@ function HostCpuChart({ cpuUsage, cpuMax }) {
           </div>
         </div>
 
-        {/* ── Valeur courante + barre de progression compacte ── */}
         <div style={{ textAlign: "right", minWidth: 120 }}>
           <div style={{ fontSize: 28, fontWeight: 900, fontFamily: MONO, color: pctColor, lineHeight: 1 }}>
             {pctNow.toFixed(1)}%
           </div>
           <div style={{ fontSize: 10, color: T.textMuted, fontFamily: MONO, marginTop: 3 }}>utilisation actuelle</div>
-          {/* mini barre 0-100 */}
           <div style={{ marginTop: 6, height: 4, width: 120, background: T.border, borderRadius: 2, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${Math.min(pctNow, 100)}%`, background: pctColor, borderRadius: 2, transition: "width 0.8s ease" }}/>
           </div>
@@ -1148,12 +1458,10 @@ function HostCpuChart({ cpuUsage, cpuMax }) {
         </div>
       </div>
 
-      {/* ── Canvas ── */}
       <div style={{ position: "relative", height: 240 }}>
         <canvas ref={canvasRef}/>
       </div>
 
-      {/* ── Légende bas ── */}
       <div style={{ display: "flex", gap: 20, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${T.border}` }}>
         {[
           { color: pctColor, label: "CPU ESXi %", sub: `vmware_host_cpu_usage / vmware_host_cpu_max × 100` },
@@ -1243,21 +1551,199 @@ function VmCard({ vm, isOpen, onToggle, index }) {
   );
 }
 
+// ─── MetricsBridgePanel ───────────────────────────────────────────────────────
+// ─── MetricsBridgePanel (Version simplifiée - seulement Analyse IA) ───────
+function MetricsBridgePanel({ metricsData, alertsData }) {
+  const analysis    = metricsData?.analysis || {};
+  const aiAlerts    = alertsData?.analyses  || [];
+  const isLoading   = metricsData === undefined;
+
+  const aiSeverity = (text = "") => {
+    const t = text.toLowerCase();
+    if (t.includes("critical") || t.includes("élevé") || t.includes("urgent"))
+      return { color: T.red,    light: T.redLight,    border: T.redBorder,    label: "CRITIQUE" };
+    if (t.includes("warning")  || t.includes("attention"))
+      return { color: T.orange, light: T.orangeLight, border: T.orangeBorder, label: "ATTENTION" };
+    if (t.includes("ok") || t.includes("normal") || t.includes("bon"))
+      return { color: T.green,  light: T.greenLight,  border: T.greenBorder,  label: "OK" };
+    return   { color: T.blue,   light: T.blueLight,   border: T.blueBorder,   label: "INFO" };
+  };
+
+  const AiBadge = ({ text }) => {
+    if (!text) return null;
+    const s = aiSeverity(text);
+    return (
+      <span style={{
+        fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+        background: s.light, color: s.color, border: `1px solid ${s.border}`, fontFamily: MONO,
+      }}>{s.label}</span>
+    );
+  };
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div
+        onClick={() => {}} // plus de collapse si tu veux, ou garde le comportement
+        style={{
+          fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", color: T.textMuted,
+          textTransform: "uppercase", fontFamily: MONO, display: "flex", alignItems: "center", gap: 8, marginBottom: 12
+        }}
+      >
+        <span style={{ flex: 1, height: "1px", background: T.border }}/>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={T.textMuted} strokeWidth="2.2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+          </svg>
+          Analyse IA - Metrics Bridge
+        </span>
+        <span style={{ flex: 1, height: "1px", background: T.border }}/>
+      </div>
+
+      <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden", boxShadow: T.shadow }}>
+        {/* Bande accent */}
+        <div style={{ height: 3, background: `linear-gradient(90deg, ${T.purple} 0%, ${T.blue} 50%, ${T.cyan} 100%)` }}/>
+
+        <div style={{ padding: "24px 28px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: 12, background: T.purpleLight,
+              border: `1px solid ${T.purpleBorder}`, display: "flex", alignItems: "center", justifyContent: "center"
+            }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={T.purple} strokeWidth="1.8" strokeLinecap="round">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <path d="M8 21h8M12 17v4M6 8h.01M9 8h6"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: T.text, fontFamily: SANS }}>
+                Analyse IA
+              </div>
+              <div style={{ fontSize: 11, color: T.textMuted, fontFamily: MONO }}>
+                {metricsData?.service || "all"} • {metricsData?.timestamp 
+                  ? new Date(metricsData.timestamp).toLocaleString("fr-FR") 
+                  : "—"}
+              </div>
+            </div>
+          </div>
+
+          {analysis && Object.keys(analysis).length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Résumé */}
+              {analysis.summary && (
+                <div style={{ padding: "20px 24px", borderRadius: 14, background: T.purpleLight, border: `1px solid ${T.purpleBorder}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.purple} strokeWidth="2.2" strokeLinecap="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: T.purple, fontFamily: SANS }}>Résumé IA</span>
+                    <AiBadge text={analysis.summary} />
+                  </div>
+                  <p style={{ fontSize: 14, color: T.textSub, lineHeight: 1.7, margin: 0 }}>
+                    {analysis.summary}
+                  </p>
+                </div>
+              )}
+
+              {/* Anomalies */}
+              {analysis.anomalies?.length > 0 && (
+                <div style={{ padding: "20px 24px", borderRadius: 14, background: T.redLight, border: `1px solid ${T.redBorder}` }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.red, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={T.red} strokeWidth="2.2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Anomalies détectées ({analysis.anomalies.length})
+                  </div>
+                  {analysis.anomalies.map((a, i) => (
+                    <div key={i} style={{
+                      padding: "14px 18px", background: "rgba(255,255,255,0.6)", borderRadius: 10,
+                      marginBottom: i < analysis.anomalies.length - 1 ? 10 : 0,
+                      fontSize: 13.5, lineHeight: 1.6
+                    }}>
+                      {typeof a === "string" ? a : JSON.stringify(a)}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Recommandations */}
+              {analysis.recommendations?.length > 0 && (
+                <div style={{ padding: "20px 24px", borderRadius: 14, background: T.blueLight, border: `1px solid ${T.blueBorder}` }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.blue, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke={T.blue} strokeWidth="2.2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    Recommandations IA
+                  </div>
+                  {analysis.recommendations.map((r, i) => (
+                    <div key={i} style={{
+                      display: "flex", gap: 14, padding: "14px 18px", background: "rgba(255,255,255,0.6)",
+                      borderRadius: 10, marginBottom: 10
+                    }}>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: T.blue, fontFamily: MONO, minWidth: 24 }}>
+                        {i + 1}.
+                      </span>
+                      <span style={{ fontSize: 13.5, lineHeight: 1.7 }}>
+                        {typeof r === "string" ? r : JSON.stringify(r)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Fallback si rien de structuré */}
+              {!analysis.summary && !analysis.anomalies?.length && !analysis.recommendations?.length && (
+                <div style={{ padding: "24px", background: T.surfaceAlt, borderRadius: 12, border: `1px solid ${T.border}` }}>
+                  <pre style={{ fontSize: 12, color: T.textSub, fontFamily: MONO, whiteSpace: "pre-wrap", overflowX: "auto" }}>
+                    {JSON.stringify(analysis, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "80px 20px" }}>
+              <div style={{ fontSize: 42, marginBottom: 16, opacity: 0.6 }}>🤖</div>
+              <div style={{ fontSize: 15, color: T.textMuted, fontFamily: MONO }}>
+                {isLoading ? "Analyse IA en cours…" : "Aucune analyse disponible pour le moment"}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: "14px 28px", borderTop: `1px solid ${T.border}`, background: T.surfaceAlt,
+          display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: T.textMuted, fontFamily: MONO
+        }}>
+          <span>Actualisation automatique · 30s</span>
+          <a href={METRICS_BRIDGE} target="_blank" rel="noreferrer" style={{ color: T.blue, textDecoration: "none", fontWeight: 600 }}>
+            Ouvrir Metrics Bridge →
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [vms,           setVms]           = useState([]);
-  const [loading,       setLoading]       = useState(true);
-  const [error,         setError]         = useState(null);
-  const [openVm,        setOpenVm]        = useState(null);
-  const [lastUpdated,   setLastUpdated]   = useState(null);
-  const [tick,          setTick]          = useState(30);
-  const [hostData,      setHostData]      = useState(null);
-  const [dsData,        setDsData]        = useState(null);
-  const [signozAlerts,  setSignozAlerts]  = useState([]);
-  const [logs,          setLogs]          = useState([]);
-  const [errorCounts,   setErrorCounts]   = useState({ timeout:0, disk:0, scoreboard:0, login:0 });
-  const [loadingAlerts, setLoadingAlerts] = useState(true);
-  const [veeamData,     setVeeamData]     = useState(undefined);
+  const [vms,              setVms]              = useState([]);
+  const [loading,          setLoading]          = useState(true);
+  const [error,            setError]            = useState(null);
+  const [openVm,           setOpenVm]           = useState(null);
+  const [lastUpdated,      setLastUpdated]      = useState(null);
+  const [tick,             setTick]             = useState(30);
+  const [hostData,         setHostData]         = useState(null);
+  const [dsData,           setDsData]           = useState(null);
+  const [signozAlerts,     setSignozAlerts]     = useState([]);
+  const [logs,             setLogs]             = useState([]);
+  const [errorCounts,      setErrorCounts]      = useState({ timeout:0, disk:0, scoreboard:0, login:0 });
+  const [loadingAlerts,    setLoadingAlerts]    = useState(true);
+  const [veeamData,        setVeeamData]        = useState(undefined);
+  const [prometheusAlerts, setPrometheusAlerts] = useState([]);
+  const [bridgeMetrics,    setBridgeMetrics]    = useState(undefined);
+  const [bridgeAlerts,     setBridgeAlerts]     = useState(undefined);
 
   const fetchVeeam = useCallback(async () => {
     const data = await fetchVeeamJob();
@@ -1266,7 +1752,7 @@ export default function Dashboard() {
 
   const fetchAlerts = useCallback(async () => {
     setLoadingAlerts(true);
-    const [sa, l, ec] = await Promise.all([
+    const [sa, l, ec, pa, bm, ba] = await Promise.all([
       fetchSigNozAlerts(),
       fetchRecentLogs(10),
       Promise.all([
@@ -1275,10 +1761,16 @@ export default function Dashboard() {
         fetchErrorCount('{job="esxi"} |= "scoreboard is not readable"'),
         fetchErrorCount('{job="esxi"} |= "Accepted password for user root"'),
       ]),
+      fetchPrometheusAlerts(),
+      fetchBridgeMetrics(),
+      fetchBridgeAlerts(),
     ]);
     if (sa !== null) setSignozAlerts(sa);
     setLogs(l);
     setErrorCounts({ timeout:ec[0], disk:ec[1], scoreboard:ec[2], login:ec[3] });
+    setPrometheusAlerts(pa);
+    setBridgeMetrics(bm);
+    setBridgeAlerts(ba);
     setLoadingAlerts(false);
   }, []);
 
@@ -1326,7 +1818,7 @@ export default function Dashboard() {
   useEffect(() => {
     fetchVMs(); fetchAlerts(); fetchVeeam();
     const di = setInterval(fetchVMs,    30000);
-    const ai = setInterval(fetchAlerts, 15000);
+    const ai = setInterval(fetchAlerts, 30000);
     const vi = setInterval(fetchVeeam,  10000);
     const ti = setInterval(() => setTick(t => t<=0?30:t-1), 1000);
     return () => { clearInterval(di); clearInterval(ai); clearInterval(vi); clearInterval(ti); };
@@ -1408,7 +1900,6 @@ export default function Dashboard() {
 
           {hostData && <HostCpuChart cpuUsage={hostData.cpuUsage} cpuMax={hostData.cpuMax}/>}
 
-          
           <VeeamBackupCard data={veeamData}/>
 
           <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:14 }}>
@@ -1423,7 +1914,14 @@ export default function Dashboard() {
               icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={activeAlerts.length>0?T.red:T.green} strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>}/>
           </div>
 
+          {/* ── Alertes logs/système SignoZ ── */}
           <AlertPanel signozAlerts={signozAlerts} logs={logs} errorCounts={errorCounts} loadingAlerts={loadingAlerts}/>
+
+          {/* ── Alertes métriques Prometheus ── */}
+          <PrometheusAlertPanel alerts={prometheusAlerts}/>
+
+          {/* ── Métriques Kubernetes + Analyse IA (Metrics Bridge) ── */}
+          <MetricsBridgePanel metricsData={bridgeMetrics} alertsData={bridgeAlerts}/>
 
           {vms.length > 0 && (
             <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
