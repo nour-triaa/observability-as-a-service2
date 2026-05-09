@@ -1,4 +1,4 @@
- 
+
 
 
 
@@ -23,17 +23,14 @@ spec:
   - name: docker
     image: docker:24-cli
     command: ['sleep', '9999']
+    securityContext:
+      runAsUser: 0
     env:
     - name: DOCKER_HOST
-      value: "tcp://192.168.49.2:2376"
-    - name: DOCKER_TLS_VERIFY
-      value: "1"
-    - name: DOCKER_CERT_PATH
-      value: "/certs"
+      value: "unix:///var/run/docker.sock"
     volumeMounts:
-    - name: minikube-certs
-      mountPath: /certs
-      readOnly: true
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
 
   - name: kubectl
     image: bitnami/kubectl:latest
@@ -42,9 +39,10 @@ spec:
       runAsUser: 0
 
   volumes:
-  - name: minikube-certs
-    secret:
-      secretName: minikube-docker-certs
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+      type: Socket
 """
         }
     }
@@ -80,57 +78,68 @@ spec:
                 script {
                     def changedFiles = sh(
                         script: """
-                            git diff --name-only HEAD~1 HEAD 2>/dev/null \
-                            || git show --stat HEAD --name-only \
-                            | grep -v '^commit\\|^Author\\|^Date\\|^\\s' \
-                            || echo "all"
+                            git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "all"
                         """,
                         returnStdout: true
                     ).trim()
 
                     echo "📝 Fichiers modifiés :\n${changedFiles}"
 
-                    // Force rebuild si changement dans k8/ aussi
-                    env.BUILD_AI_ANALYZER    = (changedFiles.contains('ai-analyzer/')       || changedFiles == 'all') ? 'true' : 'false'
-                    env.BUILD_ALERT_RECEIVER = (changedFiles.contains('alert-receiver/')     || changedFiles == 'all') ? 'true' : 'false'
-                    env.BUILD_IDENTITY       = (changedFiles.contains('identity-service/')   || changedFiles == 'all') ? 'true' : 'false'
-                    env.BUILD_METRICS_BRIDGE = (changedFiles.contains('metrics-bridge/')     || changedFiles == 'all') ? 'true' : 'false'
-                    env.BUILD_FRONTEND       = (changedFiles.contains('observability-frontend/') || changedFiles == 'all') ? 'true' : 'false'
-                    env.BUILD_VEEAM2         = (changedFiles.contains('veeam2/')             || changedFiles == 'all') ? 'true' : 'false'
-                    env.BUILD_VEEAM_MONITOR  = (changedFiles.contains('veeam-monitor/')      || changedFiles == 'all') ? 'true' : 'false'
+                    env.BUILD_AI_ANALYZER    = (changedFiles.contains('ai-analyzer/')            || changedFiles == 'all') ? 'true' : 'false'
+                    env.BUILD_ALERT_RECEIVER = (changedFiles.contains('alert-receiver/')          || changedFiles == 'all') ? 'true' : 'false'
+                    env.BUILD_IDENTITY       = (changedFiles.contains('identity-service/')        || changedFiles == 'all') ? 'true' : 'false'
+                    env.BUILD_METRICS_BRIDGE = (changedFiles.contains('metrics-bridge/')          || changedFiles == 'all') ? 'true' : 'false'
+                    env.BUILD_FRONTEND       = (changedFiles.contains('observability-frontend/')  || changedFiles == 'all') ? 'true' : 'false'
+                    env.BUILD_VEEAM2         = (changedFiles.contains('veeam2/')                  || changedFiles == 'all') ? 'true' : 'false'
+                    env.BUILD_VEEAM_MONITOR  = (changedFiles.contains('veeam-monitor/')           || changedFiles == 'all') ? 'true' : 'false'
 
                     echo """
 ┌─────────────────────────────────────┐
 │       Services à rebuilder          │
 ├─────────────────────────────────────┤
-│ ai-analyzer        : ${env.BUILD_AI_ANALYZER.padRight(5)} │
-│ alert-receiver     : ${env.BUILD_ALERT_RECEIVER.padRight(5)} │
-│ identity-service   : ${env.BUILD_IDENTITY.padRight(5)} │
-│ metrics-bridge     : ${env.BUILD_METRICS_BRIDGE.padRight(5)} │
-│ frontend           : ${env.BUILD_FRONTEND.padRight(5)} │
-│ veeam2             : ${env.BUILD_VEEAM2.padRight(5)} │
-│ veeam-monitor      : ${env.BUILD_VEEAM_MONITOR.padRight(5)} │
+│ ai-analyzer        : ${env.BUILD_AI_ANALYZER}
+│ alert-receiver     : ${env.BUILD_ALERT_RECEIVER}
+│ identity-service   : ${env.BUILD_IDENTITY}
+│ metrics-bridge     : ${env.BUILD_METRICS_BRIDGE}
+│ frontend           : ${env.BUILD_FRONTEND}
+│ veeam2             : ${env.BUILD_VEEAM2}
+│ veeam-monitor      : ${env.BUILD_VEEAM_MONITOR}
 └─────────────────────────────────────┘"""
                 }
             }
         }
 
-        // ── 3. BUILD IMAGES DOCKER ───────────────────────────────────
+        // ── 3. VERIFICATION SOCKET ───────────────────────────────────
+        stage('Vérifier Docker') {
+            steps {
+                container('docker') {
+                    sh """
+                        echo "=== Test connexion Docker ==="
+                        docker version --format 'Client: {{.Client.Version}} / Server: {{.Server.Version}}'
+                        echo "✅ Docker socket OK"
+
+                        echo "=== Images custom existantes ==="
+                        docker images | grep -E \
+                          'ai-analyzer|alert-receiver|identity-service|metrics-bridge|observability-frontend|veeam2|veeam-monitor|veeam-collector|vmware-ml' \
+                          || echo "Aucune image custom trouvée"
+                    """
+                }
+            }
+        }
+
+        // ── 4. BUILD IMAGES DOCKER ───────────────────────────────────
         stage('Build Docker Images') {
             steps {
                 container('docker') {
                     script {
-                        // Vérifier la connexion au daemon Minikube
-                        sh 'docker info > /dev/null && echo "✅ Connecté au Docker Minikube"'
-
                         def services = [
-                            [flag: 'BUILD_AI_ANALYZER',    dir: 'ai-analyzer',          image: 'ai-analyzer'],
-                            [flag: 'BUILD_ALERT_RECEIVER', dir: 'alert-receiver',        image: 'alert-receiver'],
-                            [flag: 'BUILD_IDENTITY',       dir: 'identity-service',      image: 'identity-service'],
-                            [flag: 'BUILD_METRICS_BRIDGE', dir: 'metrics-bridge',        image: 'metrics-bridge'],
-                            [flag: 'BUILD_FRONTEND',       dir: 'observability-frontend',image: 'observability-frontend'],
-                            [flag: 'BUILD_VEEAM2',         dir: 'veeam2',                image: 'veeam2-microservice'],
-                            [flag: 'BUILD_VEEAM_MONITOR',  dir: 'veeam-monitor',         image: 'veeam-monitor'],
+                            [flag: 'BUILD_AI_ANALYZER',    dir: 'ai-analyzer',           image: 'ai-analyzer'],
+                            [flag: 'BUILD_ALERT_RECEIVER', dir: 'alert-receiver',         image: 'alert-receiver'],
+                            [flag: 'BUILD_IDENTITY',       dir: 'identity-service',       image: 'identity-service'],
+                            [flag: 'BUILD_METRICS_BRIDGE', dir: 'metrics-bridge',         image: 'metrics-bridge'],
+                            [flag: 'BUILD_FRONTEND',       dir: 'observability-frontend', image: 'observability-frontend'],
+                            [flag: 'BUILD_VEEAM2',         dir: 'veeam2',                 image: 'veeam2-microservice'],
+                            [flag: 'BUILD_VEEAM_MONITOR',  dir: 'veeam-monitor',          image: 'veeam-monitor'],
                         ]
 
                         services.each { svc ->
@@ -141,87 +150,48 @@ spec:
                                       -t ${svc.image}:latest \
                                       -t ${svc.image}:${env.GIT_COMMIT_SHORT} \
                                       ./${svc.dir}
-
-                                    echo "✅ ${svc.image}:latest construit"
+                                    echo "✅ ${svc.image}:latest prêt"
                                 """
                             } else {
-                                echo "⏭️  Skip : ${svc.image} (pas de changement)"
+                                echo "⏭️  Skip ${svc.image} — pas de changement"
                             }
                         }
-
-                        // Afficher toutes les images custom présentes
-                        echo "=== Images dans Minikube ==="
-                        sh """
-                            docker images | grep -E \
-                              'ai-analyzer|alert-receiver|identity-service|metrics-bridge|observability-frontend|veeam2|veeam-monitor|veeam-collector|vmware-ml'
-                        """
                     }
                 }
             }
         }
 
-        // ── 4. DEPLOY SUR KUBERNETES ─────────────────────────────────
+        // ── 5. DEPLOY SUR KUBERNETES ─────────────────────────────────
         stage('Deploy Kubernetes') {
             steps {
                 container('kubectl') {
                     script {
                         def deployments = [
-                            [
-                                flag  : 'BUILD_AI_ANALYZER',
-                                name  : 'ai-analyzer',
-                                yaml  : null   // pas de yaml séparé, rollout suffit
-                            ],
-                            [
-                                flag  : 'BUILD_ALERT_RECEIVER',
-                                name  : 'alert-receiver',
-                                yaml  : 'k8/alert-receiver.yaml'
-                            ],
-                            [
-                                flag  : 'BUILD_IDENTITY',
-                                name  : 'identity-service',
-                                yaml  : 'k8/identity.yaml'
-                            ],
-                            [
-                                flag  : 'BUILD_METRICS_BRIDGE',
-                                name  : 'metrics-bridge',
-                                yaml  : 'k8/metrics-bridge-deployment.yml'
-                            ],
-                            [
-                                flag  : 'BUILD_FRONTEND',
-                                name  : 'frontend',
-                                yaml  : 'k8/frontend.yaml'
-                            ],
-                            [
-                                flag  : 'BUILD_VEEAM2',
-                                name  : 'veeam2',
-                                yaml  : 'k8/deployment-veeam2.yaml'
-                            ],
-                            [
-                                flag  : 'BUILD_VEEAM_MONITOR',
-                                name  : 'veeam-collector',
-                                yaml  : 'k8/deployment_veeam.yaml'
-                            ],
+                            [flag: 'BUILD_AI_ANALYZER',    name: 'ai-analyzer',    yaml: null],
+                            [flag: 'BUILD_ALERT_RECEIVER', name: 'alert-receiver', yaml: 'k8/alert-receiver.yaml'],
+                            [flag: 'BUILD_IDENTITY',       name: 'identity-service',yaml: 'k8/identity.yaml'],
+                            [flag: 'BUILD_METRICS_BRIDGE', name: 'metrics-bridge', yaml: 'k8/metrics-bridge-deployment.yml'],
+                            [flag: 'BUILD_FRONTEND',       name: 'frontend',       yaml: 'k8/frontend.yaml'],
+                            [flag: 'BUILD_VEEAM2',         name: 'veeam2',         yaml: 'k8/deployment-veeam2.yaml'],
+                            [flag: 'BUILD_VEEAM_MONITOR',  name: 'veeam-collector',yaml: 'k8/deployment_veeam.yaml'],
                         ]
 
                         deployments.each { dep ->
                             if (env[dep.flag] == 'true') {
                                 echo "🚀 Deploy → ${dep.name}"
-
                                 if (dep.yaml) {
-                                    // Apply le yaml + rollout restart
                                     sh """
                                         kubectl apply -f ${dep.yaml} -n ${K8S_NAMESPACE}
                                         kubectl rollout restart deployment/${dep.name} -n ${K8S_NAMESPACE}
                                         kubectl rollout status deployment/${dep.name} -n ${K8S_NAMESPACE} --timeout=180s
                                     """
                                 } else {
-                                    // Rollout restart uniquement
                                     sh """
                                         kubectl rollout restart deployment/${dep.name} -n ${K8S_NAMESPACE}
                                         kubectl rollout status deployment/${dep.name} -n ${K8S_NAMESPACE} --timeout=180s
                                     """
                                 }
-                                echo "✅ ${dep.name} déployé avec succès"
+                                echo "✅ ${dep.name} déployé !"
                             }
                         }
                     }
@@ -229,12 +199,12 @@ spec:
             }
         }
 
-        // ── 5. VERIFICATION FINALE ───────────────────────────────────
+        // ── 6. VERIFICATION FINALE ───────────────────────────────────
         stage('Vérification') {
             steps {
                 container('kubectl') {
                     sh """
-                        echo "\\n=== PODS namespace: ${K8S_NAMESPACE} ==="
+                        echo "\\n=== PODS ==="
                         kubectl get pods -n ${K8S_NAMESPACE} -o wide
 
                         echo "\\n=== DEPLOYMENTS ==="
@@ -249,75 +219,18 @@ spec:
         }
     }
 
-    // ── POST ─────────────────────────────────────────────────────────
     post {
         success {
             echo "✅ Pipeline réussi — commit ${env.GIT_COMMIT_SHORT} déployé !"
         }
         failure {
             echo "❌ Pipeline échoué — vérifier les logs"
-            container('kubectl') {
-                sh """
-                    echo "=== PODs en erreur ==="
-                    kubectl get pods -n ${K8S_NAMESPACE} | grep -v Running || true
-                """
-            }
         }
         always {
             echo "🔚 Fin du pipeline — ${new Date()}"
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
