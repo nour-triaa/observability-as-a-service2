@@ -1,5 +1,5 @@
 pipeline {
-    agent any  // Jenkins sur la VM directement
+    agent any
 
     environment {
         GIT_BRANCH    = 'main'
@@ -12,7 +12,6 @@ pipeline {
 
     stages {
 
-        // ── 1. CHECKOUT ──────────────────────────────────────────────
         stage('Checkout') {
             steps {
                 checkout scm
@@ -26,7 +25,6 @@ pipeline {
             }
         }
 
-        // ── 2. DETECTION DES CHANGEMENTS ─────────────────────────────
         stage('Détecter changements') {
             steps {
                 script {
@@ -34,7 +32,6 @@ pipeline {
                         script: "git diff --name-only HEAD~1 HEAD 2>/dev/null || echo 'all'",
                         returnStdout: true
                     ).trim()
-
                     echo "📝 Fichiers modifiés :\n${changedFiles}"
 
                     env.BUILD_AI_ANALYZER    = (changedFiles.contains('ai-analyzer/')           || changedFiles == 'all') ? 'true' : 'false'
@@ -48,41 +45,39 @@ pipeline {
             }
         }
 
-       // ── 3. BUILD DOCKER ──────────────────────────────────────────
-stage('Build Docker Images') {
-    steps {
-        script {
-            def services = [
-                [flag: 'BUILD_AI_ANALYZER',    dir: 'ai-analyzer',           image: 'ai-analyzer'],
-                [flag: 'BUILD_ALERT_RECEIVER', dir: 'alert-receiver',         image: 'alert-receiver'],
-                [flag: 'BUILD_IDENTITY',       dir: 'identity-service',       image: 'identity-service'],
-                [flag: 'BUILD_METRICS_BRIDGE', dir: 'metrics-bridge',         image: 'metrics-bridge'],
-                [flag: 'BUILD_FRONTEND',       dir: 'observability-frontend', image: 'observability-frontend'],
-                [flag: 'BUILD_VEEAM2',         dir: 'veeam2',                 image: 'veeam2-microservice'],
-                [flag: 'BUILD_VEEAM_MONITOR',  dir: 'veeam-monitor',          image: 'veeam-monitor'],
-            ]
+        stage('Build Docker Images') {
+            steps {
+                script {
+                    def services = [
+                        [flag: 'BUILD_AI_ANALYZER',    dir: 'ai-analyzer',           image: 'ai-analyzer'],
+                        [flag: 'BUILD_ALERT_RECEIVER', dir: 'alert-receiver',         image: 'alert-receiver'],
+                        [flag: 'BUILD_IDENTITY',       dir: 'identity-service',       image: 'identity-service'],
+                        [flag: 'BUILD_METRICS_BRIDGE', dir: 'metrics-bridge',         image: 'metrics-bridge'],
+                        [flag: 'BUILD_FRONTEND',       dir: 'observability-frontend', image: 'observability-frontend'],
+                        [flag: 'BUILD_VEEAM2',         dir: 'veeam2',                 image: 'veeam2-microservice'],
+                        [flag: 'BUILD_VEEAM_MONITOR',  dir: 'veeam-monitor',          image: 'veeam-monitor'],
+                    ]
 
-            services.each { svc ->
-                if (env[svc.flag] == 'true') {
-                    echo "🐳 Building → ${svc.image}:latest"
-                    sh """
-                        docker build \
-                          -t ${svc.image}:latest \
-                          -t ${svc.image}:${env.GIT_COMMIT_SHORT} \
-                          ./${svc.dir}
-
-                        minikube image load ${svc.image}:latest
-                        echo "✅ ${svc.image}:latest chargé dans Minikube"
-                    """
-                } else {
-                    echo "⏭️  Skip ${svc.image} — pas de changement"
+                    services.each { svc ->
+                        def flagValue = env.getProperty(svc.flag)  // ✅ FIX
+                        if (flagValue == 'true') {
+                            echo "🐳 Building → ${svc.image}:latest"
+                            sh """
+                                eval \$(minikube docker-env)
+                                docker build \
+                                  -t ${svc.image}:latest \
+                                  -t ${svc.image}:${env.GIT_COMMIT_SHORT} \
+                                  ./${svc.dir}
+                                echo "✅ ${svc.image}:latest prêt"
+                            """
+                        } else {
+                            echo "⏭️  Skip ${svc.image} — pas de changement"
+                        }
+                    }
                 }
             }
         }
-    }
-}
 
-        // ── 4. DEPLOY SUR MINIKUBE ───────────────────────────────────
         stage('Deploy Kubernetes') {
             steps {
                 script {
@@ -97,7 +92,8 @@ stage('Build Docker Images') {
                     ]
 
                     deployments.each { dep ->
-                        if (env[dep.flag] == 'true') {
+                        def flagValue = env.getProperty(dep.flag)  // ✅ FIX
+                        if (flagValue == 'true') {
                             echo "🚀 Deploy → ${dep.name}"
                             if (dep.yaml) {
                                 sh """
@@ -118,14 +114,13 @@ stage('Build Docker Images') {
             }
         }
 
-        // ── 5. VERIFICATION FINALE ───────────────────────────────────
         stage('Vérification') {
             steps {
                 sh """
-                    echo "\\n=== PODS ==="
+                    echo "=== PODS ==="
                     kubectl get pods -n ${K8S_NAMESPACE} -o wide
 
-                    echo "\\n=== DEPLOYMENTS ==="
+                    echo "=== DEPLOYMENTS ==="
                     kubectl get deployments -n ${K8S_NAMESPACE}
                 """
             }
