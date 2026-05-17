@@ -48,44 +48,39 @@ pipeline {
             }
         }
 
-        // ── 3. BUILD DOCKER (vers Minikube) ──────────────────────────
-        stage('Build Docker Images') {
-            steps {
-                script {
-                    // Pointer Docker vers le daemon Minikube
-                    def minikubeEnv = sh(
-                        script: "minikube docker-env --shell bash",
-                        returnStdout: true
-                    ).trim()
+       // ── 3. BUILD DOCKER ──────────────────────────────────────────
+stage('Build Docker Images') {
+    steps {
+        script {
+            def services = [
+                [flag: 'BUILD_AI_ANALYZER',    dir: 'ai-analyzer',           image: 'ai-analyzer'],
+                [flag: 'BUILD_ALERT_RECEIVER', dir: 'alert-receiver',         image: 'alert-receiver'],
+                [flag: 'BUILD_IDENTITY',       dir: 'identity-service',       image: 'identity-service'],
+                [flag: 'BUILD_METRICS_BRIDGE', dir: 'metrics-bridge',         image: 'metrics-bridge'],
+                [flag: 'BUILD_FRONTEND',       dir: 'observability-frontend', image: 'observability-frontend'],
+                [flag: 'BUILD_VEEAM2',         dir: 'veeam2',                 image: 'veeam2-microservice'],
+                [flag: 'BUILD_VEEAM_MONITOR',  dir: 'veeam-monitor',          image: 'veeam-monitor'],
+            ]
 
-                    def services = [
-                        [flag: 'BUILD_AI_ANALYZER',    dir: 'ai-analyzer',           image: 'ai-analyzer'],
-                        [flag: 'BUILD_ALERT_RECEIVER', dir: 'alert-receiver',         image: 'alert-receiver'],
-                        [flag: 'BUILD_IDENTITY',       dir: 'identity-service',       image: 'identity-service'],
-                        [flag: 'BUILD_METRICS_BRIDGE', dir: 'metrics-bridge',         image: 'metrics-bridge'],
-                        [flag: 'BUILD_FRONTEND',       dir: 'observability-frontend', image: 'observability-frontend'],
-                        [flag: 'BUILD_VEEAM2',         dir: 'veeam2',                 image: 'veeam2-microservice'],
-                        [flag: 'BUILD_VEEAM_MONITOR',  dir: 'veeam-monitor',          image: 'veeam-monitor'],
-                    ]
+            services.each { svc ->
+                if (env[svc.flag] == 'true') {
+                    echo "🐳 Building → ${svc.image}:latest"
+                    sh """
+                        docker build \
+                          -t ${svc.image}:latest \
+                          -t ${svc.image}:${env.GIT_COMMIT_SHORT} \
+                          ./${svc.dir}
 
-                    services.each { svc ->
-                        if (env[svc.flag] == 'true') {
-                            echo "🐳 Building → ${svc.image}:latest"
-                            sh """
-                                eval \$(minikube docker-env)
-                                docker build \\
-                                  -t ${svc.image}:latest \\
-                                  -t ${svc.image}:${env.GIT_COMMIT_SHORT} \\
-                                  ./${svc.dir}
-                                echo "✅ ${svc.image}:latest prêt"
-                            """
-                        } else {
-                            echo "⏭️  Skip ${svc.image} — pas de changement"
-                        }
-                    }
+                        minikube image load ${svc.image}:latest
+                        echo "✅ ${svc.image}:latest chargé dans Minikube"
+                    """
+                } else {
+                    echo "⏭️  Skip ${svc.image} — pas de changement"
                 }
             }
         }
+    }
+}
 
         // ── 4. DEPLOY SUR MINIKUBE ───────────────────────────────────
         stage('Deploy Kubernetes') {
