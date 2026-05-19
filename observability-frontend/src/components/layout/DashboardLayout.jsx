@@ -21,6 +21,7 @@ import SettingsIcon  from "@mui/icons-material/Settings";
 import BarChartIcon  from "@mui/icons-material/BarChart";
 import ExitToAppIcon from "@mui/icons-material/ExitToApp";
 import StorageIcon   from "@mui/icons-material/Storage";
+import DescriptionIcon from '@mui/icons-material/Description';
 
 const drawerWidth   = 252;
 const SESSION_TIMEOUT = 5 * 60 * 1000;
@@ -46,7 +47,7 @@ const navItems = [
   { label: "Tableau de bord", path: "/dashboard", icon: <DashboardIcon fontSize="small" /> },
   { label: "Métriques",       path: "/metrics",   icon: <BarChartIcon  fontSize="small" /> },
   { label: "Stockage",        path: "/storage",   icon: <StorageIcon   fontSize="small" /> },
-  { label: "Reporting",      path: "/settings",  icon: <SettingsIcon  fontSize="small" /> },
+  { label: "Reporting",      path: "/settings",  icon: <DescriptionIcon  fontSize="small" /> },
 ];
 
 export default function DashboardLayout({ children }) {
