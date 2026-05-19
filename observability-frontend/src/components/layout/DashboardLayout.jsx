@@ -46,7 +46,7 @@ const navItems = [
   { label: "Tableau de bord", path: "/dashboard", icon: <DashboardIcon fontSize="small" /> },
   { label: "Métriques",       path: "/metrics",   icon: <BarChartIcon  fontSize="small" /> },
   { label: "Stockage",        path: "/storage",   icon: <StorageIcon   fontSize="small" /> },
-  { label: "Paramètres",      path: "/settings",  icon: <SettingsIcon  fontSize="small" /> },
+  { label: "Reporting",      path: "/settings",  icon: <SettingsIcon  fontSize="small" /> },
 ];
 
 export default function DashboardLayout({ children }) {
