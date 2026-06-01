@@ -46,7 +46,7 @@ const P = {
 const navItems = [
   { label: "Tableau de bord ", path: "/dashboard", icon: <DashboardIcon fontSize="small" /> },
   { label: "Métriques VMs ",       path: "/metrics",   icon: <BarChartIcon  fontSize="small" /> },
-  { label: "Stockage",        path: "/storage",   icon: <StorageIcon   fontSize="small" /> },
+  { label: "Stockage  YMWNN",        path: "/storage",   icon: <StorageIcon   fontSize="small" /> },
   { label: "Reporting",      path: "/settings",  icon: <DescriptionIcon  fontSize="small" /> },
 ];
 
