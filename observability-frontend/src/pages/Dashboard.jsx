@@ -1198,9 +1198,8 @@ function DatastoreBar({ dsData }) {
   );
 }
 
-function AlertPanel({ signozAlerts, logs, errorCounts, loadingAlerts }) {
-  const active   = signozAlerts.filter(a => !a.resolved);
-  const resolved = signozAlerts.filter(a =>  a.resolved);
+// ─── AlertPanel (Version simplifiée - seulement Loki Logs) ─────────────────────
+function AlertPanel({ logs, loadingAlerts }) {
   const logColor = line => {
     const l = line.toLowerCase();
     if (l.includes("failed") || l.includes("error")) return T.red;
@@ -1208,76 +1207,66 @@ function AlertPanel({ signozAlerts, logs, errorCounts, loadingAlerts }) {
     if (l.includes("info")) return T.blue;
     return T.textSub;
   };
+
   const formatTs = ns => new Date(ns / 1e6).toLocaleTimeString("fr-FR");
+
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
-      <div style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:"20px 22px", boxShadow:T.shadow }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:30, height:30, borderRadius:8, background:T.redLight, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={T.red} strokeWidth="2.2" strokeLinecap="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-            </div>
-            <div>
-              <div style={{ fontSize:14, fontWeight:800, color:T.text, fontFamily:SANS }}>Alertes système</div>
-              <div style={{ fontSize:11, color:T.textMuted, fontFamily:MONO }}>Vue d'ensemble</div>
-            </div>
-          </div>
-          <div style={{ display:"flex", gap:8 }}>
-            {[
-              { c:active.length,   color:T.red,   light:T.redLight,   l:"ACTIVES"  },
-              { c:resolved.length, color:T.green, light:T.greenLight, l:"RÉSOLUES" },
-            ].map(({ c, color, light, l }) => (
-              <div key={l} style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"10px 18px", borderRadius:10, background:light }}>
-                <span style={{ fontSize:26, fontWeight:900, color, fontFamily:MONO, lineHeight:1 }}>{c}</span>
-                <span style={{ fontSize:9, color, fontFamily:MONO, letterSpacing:"0.1em", marginTop:4 }}>{l}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-          {[
-            { label:"Timeouts (5m)",   count:errorCounts.timeout,    color:T.orange, light:T.orangeLight },
-            { label:"Erreurs disque",  count:errorCounts.disk,       color:T.red,    light:T.redLight    },
-            { label:"Scoreboard VM",   count:errorCounts.scoreboard, color:T.purple, light:T.purpleLight },
-            { label:"Connexions root", count:errorCounts.login,      color:T.cyan,   light:T.cyanLight   },
-          ].map(({ label, count, color, light }) => (
-            <div key={label} style={{ padding:"12px 14px", borderRadius:10, background:light, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <span style={{ fontSize:11, color, fontFamily:MONO, fontWeight:600 }}>{label}</span>
-              <span style={{ fontSize:22, fontWeight:900, color, fontFamily:MONO }}>{count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div style={{ background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:"20px 22px", boxShadow:T.shadow }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-          <div style={{ width:30, height:30, borderRadius:8, background:T.blueLight, display:"flex", alignItems:"center", justifyContent:"center" }}>
+    <div style={{ marginBottom: 14 }}>
+      <SectionLabel>Journaux en direct - Loki</SectionLabel>
+
+      <div style={{
+        background: T.surface,
+        border: `1px solid ${T.border}`,
+        borderRadius: 16,
+        padding: "20px 24px",
+        boxShadow: T.shadow,
+        minHeight: "420px"   // ← tu peux ajuster cette hauteur
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: T.blueLight, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={T.blue} strokeWidth="2.2" strokeLinecap="round">
               <polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>
             </svg>
           </div>
           <div>
-            <div style={{ fontSize:14, fontWeight:800, color:T.text, fontFamily:SANS }}>Journaux en direct</div>
-            <div style={{ fontSize:11, color:T.textMuted, fontFamily:MONO }}>10 dernières minutes</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: T.text, fontFamily: SANS }}>Journaux ESXi en direct</div>
+            <div style={{ fontSize: 11, color: T.textMuted, fontFamily: MONO }}>10 dernières minutes • Mise à jour automatique</div>
           </div>
-          <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:5 }}>
-            <div style={{ width:6, height:6, borderRadius:"50%", background:T.green, animation:"blink 2s infinite" }}/>
-            <span style={{ fontSize:11, color:T.green, fontFamily:MONO, fontWeight:600 }}>LIVE</span>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.green, animation: "blink 2s infinite" }}/>
+            <span style={{ fontSize: 11, color: T.green, fontFamily: MONO, fontWeight: 600 }}>LIVE</span>
           </div>
         </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:4, maxHeight:320, overflowY:"auto" }}>
+
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          maxHeight: "520px",     // ← augmente ou diminue selon tes besoins
+          overflowY: "auto",
+          paddingRight: "8px"
+        }}>
           {logs.length === 0 ? (
-            <div style={{ textAlign:"center", padding:32, color:T.textMuted, fontSize:13, fontFamily:MONO }}>Aucun journal récent…</div>
+            <div style={{ textAlign: "center", padding: "80px 20px", color: T.textMuted, fontSize: 14, fontFamily: MONO }}>
+              Aucun journal récent…
+            </div>
           ) : logs.map((entry, i) => (
-            <div key={i} style={{ padding:"8px 10px", borderRadius:7, background:T.surfaceAlt, border:`1px solid rgba(0,0,0,0.05)`, borderLeft:`3px solid ${logColor(entry.line)}`, animation:`fadeUp 0.3s ease both`, animationDelay:`${i*0.03}s` }}>
-              <div style={{ display:"flex", gap:8, alignItems:"baseline" }}>
-                <span style={{ fontSize:10, color:T.textMuted, fontFamily:MONO, flexShrink:0 }}>{formatTs(entry.ts)}</span>
-                <span style={{ fontSize:11, color:logColor(entry.line), fontFamily:MONO, lineHeight:1.5, wordBreak:"break-all" }}>
-                  {entry.line.substring(0, 120)}{entry.line.length > 120 ? "…" : ""}
-                </span>
-              </div>
+            <div key={i} style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: T.surfaceAlt,
+              borderLeft: `4px solid ${logColor(entry.line)}`,
+              fontSize: 13,
+              lineHeight: 1.5,
+              fontFamily: MONO,
+              wordBreak: "break-all"
+            }}>
+              <span style={{ color: T.textMuted, fontSize: 11, marginRight: 12 }}>
+                {formatTs(entry.ts)}
+              </span>
+              <span style={{ color: logColor(entry.line) }}>
+                {entry.line}
+              </span>
             </div>
           ))}
         </div>
@@ -1915,7 +1904,7 @@ export default function Dashboard() {
           </div>
 
           {/* ── Alertes logs/système SignoZ ── */}
-          <AlertPanel signozAlerts={signozAlerts} logs={logs} errorCounts={errorCounts} loadingAlerts={loadingAlerts}/>
+         <AlertPanel logs={logs} loadingAlerts={loadingAlerts}/>
 
           {/* ── Alertes métriques Prometheus ── */}
           <PrometheusAlertPanel alerts={prometheusAlerts}/>
