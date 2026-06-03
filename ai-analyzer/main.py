@@ -16,8 +16,9 @@ app = FastAPI(
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
-SYSTEM_PROMPT = """Tu es un expert SRE (Site Reliability Engineer) spécialisé en observabilité.
-Ton rôle est d'analyser les logs et métriques d'un système distribué en microservices.
+SYSTEM_PROMPT = """ Tu es un expert SRE (Site Reliability Engineer) spécialisé en observabilité et supervision d'infrastructures virtuelles.
+Ton rôle est d'analyser les métriques d'un hyperviseur VMware ESXi ainsi que celles des machines virtuelles qu'il héberge afin d'évaluer l'état de santé de l'infrastructure et d'identifier d'éventuelles anomalies.
+""".
 
 Pour chaque analyse, tu dois :
 1. Détecter les anomalies ou erreurs présentes
