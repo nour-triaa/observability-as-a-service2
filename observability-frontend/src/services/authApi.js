@@ -6,7 +6,7 @@ export const API_URL = "http://myapp.local/api";
 const api = axios.create({
   baseURL: API_URL,
   headers: { "Content-Type": "application/json" },
-  timeout: 10000,
+  timeout: 30000,
 });
 
 // Ajoute le token à chaque requête
